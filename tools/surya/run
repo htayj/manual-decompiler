@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly VENV="$SCRIPT_DIR/.venv"
+
+if [[ ! -x "$VENV/bin/python" ]]; then
+  echo "Surya environment is absent; run: scripts/dev-shell --command uv sync --project tools/surya --frozen" >&2
+  exit 1
+fi
+if [[ -z "${LISPMDOC_CXX_RUNTIME:-}" ]]; then
+  echo "Surya must run inside scripts/dev-shell" >&2
+  exit 1
+fi
+
+export LD_LIBRARY_PATH="$LISPMDOC_CXX_RUNTIME:/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export SURYA_INFERENCE_BACKEND="${SURYA_INFERENCE_BACKEND:-vllm}"
+export VLLM_GPU_TYPE="${VLLM_GPU_TYPE:-4090}"
+export DOCKER_HF_CACHE_PATH="${DOCKER_HF_CACHE_PATH:-${LISPMDOC_MODEL_ROOT:-$PWD/work/models}/huggingface}"
+
+mkdir -p "$DOCKER_HF_CACHE_PATH"
+
+if (($# == 0)); then
+  exec "$VENV/bin/surya_ocr" --help
+fi
+
+case "$1" in
+  python)
+    shift
+    exec "$VENV/bin/python" "$@"
+    ;;
+  *)
+    exec "$VENV/bin/surya_ocr" "$@"
+    ;;
+esac

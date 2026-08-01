@@ -1,0 +1,7 @@
+profile: english-manual
+source_root: source-material
+work_root: work
+output_root: decompiled
+render_dpi: 300
+ocr_engine: auto
+jobs: 1

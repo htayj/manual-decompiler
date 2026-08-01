@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+readonly CONTEXT="$REPO_ROOT/containers/paddleocr"
+readonly PODMAN_BIN="${LISPMDOC_PODMAN_BIN:-$(command -v podman)}"
+readonly IMAGE="localhost/lispmdoc-paddleocr:3.7.0-cu126"
+
+"$PODMAN_BIN" build \
+  --file "$CONTEXT/Containerfile" \
+  --tag "$IMAGE" \
+  "$CONTEXT"
+
+"$PODMAN_BIN" image inspect "$IMAGE" \
+  --format '{{json .ID}} {{json .Digest}} {{json .Size}}'

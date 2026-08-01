@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+readonly LOCK_FILE="$REPO_ROOT/containers/images.lock.json"
+readonly PODMAN_BIN="${LISPMDOC_PODMAN_BIN:-$(command -v podman)}"
+readonly CUDA_IMAGE="$(
+  jq -er '.images["cuda-smoke"].reference' "$LOCK_FILE"
+)"
+
+required_commands=(
+  chromium
+  hb-shape
+  jq
+  mutool
+  pdftoppm
+  podman
+  potrace
+  pyftsubset
+  qpdf
+  resvg
+  tesseract
+  uv
+  woff2_compress
+)
+
+missing=()
+for command_name in "${required_commands[@]}"; do
+  if ! command -v "$command_name" >/dev/null; then
+    missing+=("$command_name")
+  fi
+done
+
+if ((${#missing[@]})); then
+  printf 'missing required commands: %s\n' "${missing[*]}" >&2
+  exit 1
+fi
+
+if ! nvidia-ctk cdi list 2>/dev/null | grep -Fxq 'nvidia.com/gpu=all'; then
+  echo "NVIDIA CDI device nvidia.com/gpu=all is unavailable" >&2
+  exit 1
+fi
+
+gpu="$(
+  "$PODMAN_BIN" run --rm --pull=never \
+    --device nvidia.com/gpu=all \
+    "$CUDA_IMAGE" \
+    nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
+)"
+
+jq -n \
+  --arg format "lispmdoc-runtime-evidence-1" \
+  --arg gpu "$gpu" \
+  --arg podman "$("$PODMAN_BIN" --version)" \
+  --arg nix "$(nix --version)" \
+  --arg python "$(python --version 2>&1)" \
+  --arg tesseract "$(tesseract --version 2>&1 | head -1)" \
+  --arg poppler "$(pdftoppm -v 2>&1 | head -1)" \
+  --arg chromium "$(chromium --version)" \
+  --arg resvg "$(resvg --version)" \
+  --arg harfbuzz "$(hb-shape --version | head -1)" \
+  --arg fonttools "$(
+    python -c 'from fontTools import version; print(version)'
+  )" \
+  --arg container_lock_sha256 "$(
+    sha256sum "$LOCK_FILE" | cut -d ' ' -f 1
+  )" \
+  --slurpfile images "$LOCK_FILE" \
+  '{
+    format: $format,
+    gpu: $gpu,
+    runtimes: {
+      podman: $podman,
+      nix: $nix,
+      python: $python
+    },
+    tools: {
+      tesseract: $tesseract,
+      poppler: $poppler,
+      chromium: $chromium,
+      resvg: $resvg,
+      harfbuzz: $harfbuzz,
+      fonttools: $fonttools
+    },
+    container_lock_sha256: $container_lock_sha256,
+    containers: $images[0]
+  }'

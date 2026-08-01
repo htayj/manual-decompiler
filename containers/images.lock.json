@@ -1,0 +1,23 @@
+{
+  "format": "lispmdoc-container-lock-1",
+  "images": {
+    "cuda-smoke": {
+      "image": "docker.io/nvidia/cuda",
+      "platform": "linux/amd64",
+      "reference": "docker.io/nvidia/cuda@sha256:6b3201183858bad08441837f5a5efc2c75290135cc25fcc87d9ff763190cfd09",
+      "source_tag": "12.6.3-base-ubuntu24.04"
+    },
+    "paddle-base": {
+      "image": "ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddle",
+      "platform": "linux/amd64",
+      "reference": "ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddle@sha256:a9f944f4a8b075b85928dd51880269bdc63b59aa1d7c9360283c658ac6eed2a4",
+      "source_tag": "3.0.0-gpu-cuda12.6-cudnn9.5-trt10.5"
+    },
+    "surya-vllm": {
+      "image": "docker.io/vllm/vllm-openai",
+      "platform": "linux/amd64",
+      "reference": "docker.io/vllm/vllm-openai@sha256:bf0486e51765766a069f6eb26a63a06748859a568b24200acd3aa4edb58f3d35",
+      "source_tag": "v0.20.1"
+    }
+  }
+}

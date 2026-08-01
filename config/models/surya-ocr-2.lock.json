@@ -1,0 +1,18 @@
+{
+  "format": "lispmdoc-model-lock-1",
+  "license": {
+    "disposition": "review-required",
+    "identifier": "modified-ai-pubs-open-rail-m",
+    "source": "https://github.com/datalab-to/surya#commercial-usage"
+  },
+  "model": {
+    "expected_snapshot_bytes": 1399560703,
+    "primary_weight": {
+      "path": "model.safetensors",
+      "sha256": "5755f82a997dd0b111964fa8b31cc2daef7aeb7a706bbd17d73d6a93ef3f723e",
+      "size": 1372368672
+    },
+    "repository": "datalab-to/surya-ocr-2",
+    "revision": "3b3d4cdf88d6928b0acdc75181b13206ea67c4a3"
+  }
+}

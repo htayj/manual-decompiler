@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+readonly LOCK_FILE="$REPO_ROOT/containers/images.lock.json"
+readonly PODMAN_BIN="${LISPMDOC_PODMAN_BIN:-$(command -v podman)}"
+readonly IMAGE="$(jq -er '.images["surya-vllm"].reference' "$LOCK_FILE")"
+readonly MINIMUM_FREE_BYTES=$((30 * 1024 * 1024 * 1024))
+readonly FREE_BYTES="$(df --output=avail -B1 "$REPO_ROOT" | tail -1 | tr -d ' ')"
+
+if ((FREE_BYTES < MINIMUM_FREE_BYTES)); then
+  echo "refusing vLLM pull: at least 30 GiB free is required; currently $FREE_BYTES bytes" >&2
+  exit 1
+fi
+
+"$PODMAN_BIN" pull "$IMAGE"
+"$PODMAN_BIN" image inspect "$IMAGE" --format '{{json .RepoDigests}}'

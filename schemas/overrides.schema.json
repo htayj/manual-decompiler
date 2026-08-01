@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lispmdoc.org/schemas/lmdoc/v1/overrides.schema.json",
+  "title": "LMDOC v1 guarded manual correction",
+  "type": "object",
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*-[0-9a-f]{12,64}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": false,
+  "required": ["format_version", "target_id", "guard", "operation", "reason", "reviewer", "old_value", "new_value"],
+  "properties": {
+    "format_version": {"const": "1.0"},
+    "target_id": {"$ref": "#/$defs/id"},
+    "guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_page_sha256", "region_id", "expected_region_fingerprint", "original_text_sha256"],
+      "properties": {
+        "source_page_sha256": {"$ref": "#/$defs/sha256"},
+        "region_id": {"$ref": "#/$defs/id"},
+        "expected_region_fingerprint": {"$ref": "#/$defs/sha256"},
+        "original_text_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "operation": {"enum": ["replace-text", "replace-geometry", "relabel-semantics", "reorder-reading", "replace-style"]},
+    "reason": {"type": "string", "minLength": 1},
+    "reviewer": {"type": "string", "minLength": 1},
+    "old_value": {},
+    "new_value": {}
+  }
+}

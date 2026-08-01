@@ -1,0 +1,15 @@
+# Local source corpus. PDFs placed here are inputs, not repository content.
+/source-material/
+
+# Generated stage data and final local conversions.
+/work/
+/decompiled/
+
+# Local Python/tool state.
+__pycache__/
+*.py[cod]
+/.pytest_cache/
+/.cache/
+/.venv/
+/tools/surya/.venv/
+/.direnv/

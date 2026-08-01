@@ -1,0 +1,4 @@
+body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 100rem; }
+.views { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); }
+[data-review-views] > * { border: 1px solid #777; min-height: 20rem; padding: 1rem; }
+:focus-visible { outline: 3px solid #06c; outline-offset: 3px; }

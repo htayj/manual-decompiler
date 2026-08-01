@@ -1,0 +1,51 @@
+"""Bounded raster-region policy, crop, and codec foundations."""
+
+from .core import (
+    RASTER_CODECS,
+    CropCatalog,
+    EncodedRasterInfo,
+    approved_photo_dominant_disposition,
+    codec_curve,
+    evaluate_page_raster_policy,
+    inspect_encoded_raster,
+    probe_external_capabilities,
+    tight_crop,
+    validate_raster_mapping,
+)
+from .types import (
+    RASTER_REASON_CODES,
+    Capability,
+    CodecCandidate,
+    CodecCurve,
+    PixelBox,
+    RasterBitmap,
+    RasterClass,
+    RasterCrop,
+    RasterPolicyDecision,
+    RasterReasonCode,
+    RasterRegion,
+)
+
+__all__ = [
+    "Capability",
+    "CodecCandidate",
+    "CodecCurve",
+    "CropCatalog",
+    "EncodedRasterInfo",
+    "PixelBox",
+    "RasterBitmap",
+    "RasterClass",
+    "RasterCrop",
+    "RasterPolicyDecision",
+    "RASTER_CODECS",
+    "RASTER_REASON_CODES",
+    "RasterReasonCode",
+    "RasterRegion",
+    "approved_photo_dominant_disposition",
+    "codec_curve",
+    "evaluate_page_raster_policy",
+    "inspect_encoded_raster",
+    "probe_external_capabilities",
+    "tight_crop",
+    "validate_raster_mapping",
+]

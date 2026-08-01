@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LMDOC review shell</title>
+    <link rel="stylesheet" href="review.css">
+  </head>
+  <body>
+    <header><h1>LMDOC review</h1><p>Read-only synchronized evidence viewer.</p></header>
+    <main>
+      <section aria-labelledby="views"><h2 id="views">Synchronized views</h2><div class="views" data-review-views></div></section>
+      <section aria-labelledby="queue"><h2 id="queue">Severe review queue</h2><ol data-severe-queue></ol></section>
+      <section aria-labelledby="patches"><h2 id="patches">Guarded patch proposals</h2><p>This shell exports proposals only. It never edits source PDFs, generated views, or package files.</p></section>
+    </main>
+    <script src="review.js"></script>
+  </body>
+</html>

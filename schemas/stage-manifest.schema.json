@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lispmdoc.org/schemas/lmdoc/v1/stage-manifest.schema.json",
+  "title": "LMDOC resumable stage record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["key", "key_digest", "status", "output_digests"],
+  "properties": {
+    "key": {"type": "object"},
+    "key_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "status": {"enum": ["complete", "failed"]},
+    "output_digests": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+    "error": {"type": "string", "minLength": 1}
+  }
+}

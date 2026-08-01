@@ -1,0 +1,36 @@
+{
+  "format": "lispmdoc-model-bundle-lock-1",
+  "pipeline": {
+    "paddle": "3.0.0",
+    "paddleocr": "3.7.0",
+    "ocr_version": "PP-OCRv5",
+    "language": "en"
+  },
+  "models": {
+    "PP-OCRv5_server_det": {
+      "repository": "PaddlePaddle/PP-OCRv5_server_det",
+      "revision": "ca867c897ecbca8873081573a802ad70d499cb94",
+      "files": {
+        "config.json": "436bf19010fe3879477e8599a870a0ec8ccd14ca39056805ec4ed20ab318ec04",
+        "inference.json": "af5876933d8806a1b50d895867e0781e135cd92ff37381992828fc8d1b842d28",
+        "inference.pdiparams": "183146fe9d9910352f68482f623bcbbb9fa7b9e8fa1463b9ad288cef00524d2d",
+        "inference.yml": "28fb721efc3634fc8aa677e474b9602cb815a91cf569ef357a7a553d7b3ce685"
+      }
+    },
+    "en_PP-OCRv5_mobile_rec": {
+      "repository": "PaddlePaddle/en_PP-OCRv5_mobile_rec",
+      "revision": "267c36e24c331595590fe7bd72bde2436fd286f2",
+      "files": {
+        "config.json": "16103ac291a82fca50f0bb000d62a4b8168f6042f03c89c44cf32f241d1eb1f2",
+        "inference.json": "fd1b6ec722ea841a72d3ba43e527df1d1066d5d7808e0503ee3eec7265188753",
+        "inference.pdiparams": "3ec8a97ed6cefe8568d3e2ee90bb193299b566a7661aa4fd52d224b96b59f66b",
+        "inference.yml": "27e91d0582f40168aa218303c76e184bc78fa7a5d105aad0cfbad8458b441067"
+      }
+    }
+  },
+  "license": {
+    "spdx": "Apache-2.0",
+    "disposition": "review-required",
+    "evidence": "Each pinned Hugging Face model README declares apache-2.0."
+  }
+}

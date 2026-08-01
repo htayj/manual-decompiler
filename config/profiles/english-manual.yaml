@@ -1,0 +1,13 @@
+# Conservative initial profile. Benchmark results will determine OCR routing.
+profile: english-manual
+render_dpi: 300
+ocr_engine: auto
+
+classification:
+  ambiguous_margin: 0.10
+  trust_existing_text: false
+
+fidelity:
+  preserve_diplomatic_text: true
+  allow_full_page_raster: false
+  require_raster_reason: true

@@ -1,0 +1,15 @@
+FROM ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddle@sha256:a9f944f4a8b075b85928dd51880269bdc63b59aa1d7c9360283c658ac6eed2a4
+
+COPY requirements.lock /opt/lispmdoc/requirements.lock
+
+RUN python -m pip install \
+      --disable-pip-version-check \
+      --ignore-installed \
+      --no-cache-dir \
+      --require-hashes \
+      --requirement /opt/lispmdoc/requirements.lock \
+    && python -c "from importlib.metadata import version; print(version('paddlepaddle-gpu'), version('paddleocr'))"
+
+WORKDIR /work
+
+ENTRYPOINT ["python"]

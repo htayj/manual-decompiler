@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lispmdoc.org/schemas/lmdoc/v1/evidence.schema.json",
+  "title": "LMDOC canonical evidence record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "subject_id", "producer", "producer_version", "configuration_sha256", "artifacts", "alternatives", "unresolved_findings"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "subject_id": {"type": "string", "minLength": 1},
+    "producer": {"type": "string", "minLength": 1},
+    "producer_version": {"type": "string", "minLength": 1},
+    "configuration_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifacts": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["sha256", "byte_size", "media_type", "role"], "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "byte_size": {"type": "integer", "minimum": 0}, "media_type": {"type": "string", "minLength": 1}, "role": {"type": "string", "minLength": 1}}}},
+    "alternatives": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "unresolved_findings": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  }
+}
