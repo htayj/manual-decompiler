@@ -39,6 +39,18 @@ from .wave1 import (
     stratified_measurements,
     validate_60_page_queue,
 )
+from .workspace import (
+    WORKSPACE_VERSION,
+    WorkspaceResult,
+    blank_transcription_package,
+    initialize_transcription_workspace,
+    load_transcription_package,
+    load_wave1_queue,
+    queue_page_from_dict,
+    queue_to_dict,
+    transcription_package_from_dict,
+    transcription_status,
+)
 
 __all__ = [
     "BENCHMARK_MANIFEST_VERSION",
@@ -66,6 +78,8 @@ __all__ = [
     "TranscribedRegion",
     "TranscriptionPackage",
     "Wave1ContractError",
+    "WORKSPACE_VERSION",
+    "WorkspaceResult",
     "aggregate_engine_reports",
     "candidates_from_inspections",
     "ground_truth_digest",
@@ -74,4 +88,12 @@ __all__ = [
     "hard_gate",
     "stratified_measurements",
     "validate_60_page_queue",
+    "blank_transcription_package",
+    "initialize_transcription_workspace",
+    "load_transcription_package",
+    "load_wave1_queue",
+    "queue_page_from_dict",
+    "queue_to_dict",
+    "transcription_package_from_dict",
+    "transcription_status",
 ]

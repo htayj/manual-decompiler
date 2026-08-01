@@ -28,6 +28,29 @@ pages:
 `lispmdoc benchmark-select` creates a deterministic review queue stratified by
 page class and operator-supplied difficulty tags; it does not invent truth.
 
+Wave 1 queues use an object with `version: lispmdoc-benchmark-wave1` and a
+`pages` array. Once each selected page has an exact render, reviewed region
+inventory, and expected engine/model/tool identity, initialize blank human
+transcription packages with:
+
+```sh
+lispmdoc benchmark-transcription-init queue.json work/transcription-wave1
+lispmdoc benchmark-transcription-check \
+  work/transcription-wave1/pages/SOURCE-p000001.json
+```
+
+Initialization copies no OCR text into the packages. Every inventory region is
+created with `needs-review`, no transcriber, and no adjudicator. The check exits
+nonzero until coverage is complete, at least two independent human
+transcriptions have been submitted, and an adjudicated transcription exists.
+It binds the package to the source PDF digest, zero-based page index, render
+digest, region inventory, composition tags, and exact expected run identity.
+Existing workspaces are never overwritten.
+
+The workspace and copyrighted transcriptions belong under ignored `work/`
+unless redistribution rights are established. Tracked fixtures must remain
+synthetic and contain no copied manual text.
+
 The lower-level `benchmark-ocr` evaluator accepts a JSON ground-truth array:
 
 ```json
@@ -83,3 +106,23 @@ corpus spanning:
 Raw engine output and tool/model identities must be stored as evidence; the
 aggregator derives and reports the raw-output digest but is not itself an
 artifact store. An LLM-generated correction is never ground truth.
+
+## Current pilot
+
+The first local, ignored review pilot is Chinual 4th Edition source page index
+99 (printed page 88), a clean bilevel scan containing prose and Lisp symbols.
+It is bound to source SHA-256
+`123ceb361b0c84864425fc7eee319afc9891a7a68e417f93386f8172334a6e85`
+and 300-DPI render SHA-256
+`54cb0a866ecb74d6594ab834b83865221df1feb1cc51fbcfb2c4b5f568f7f502`.
+The blank 37-region package correctly remains `human-review-required`.
+
+Raw candidate outputs are retained separately from truth:
+
+- PaddleOCR output SHA-256
+  `ba69639aadadaf819b1208edc8257d9632db98924e19776508e4f5be33e19baa`;
+- Surya output SHA-256
+  `17e369cd12e97942387df9713dc94a41fccf714fbd562d97fa05f3e92bfdf595`.
+
+Neither candidate output is authoritative until humans complete and adjudicate
+the transcription package.

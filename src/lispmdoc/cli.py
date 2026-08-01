@@ -12,10 +12,13 @@ from typing import Any
 from PIL import Image
 
 from .benchmark import (
-    QueuePage,
     candidates_from_inspections,
+    initialize_transcription_workspace,
     load_corpus,
+    load_transcription_package,
+    load_wave1_queue,
     select_stratified_pages,
+    transcription_status,
     validate_60_page_queue,
 )
 from .config import load_config
@@ -122,6 +125,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "benchmark-queue-check", help="validate a Wave 1 60-page selection queue"
     )
     queue_check.add_argument("queue", type=Path)
+
+    transcription_init = subparsers.add_parser(
+        "benchmark-transcription-init",
+        help="create truth-free templates for independent human transcription",
+    )
+    transcription_init.add_argument("queue", type=Path)
+    transcription_init.add_argument("output", type=Path)
+
+    transcription_check = subparsers.add_parser(
+        "benchmark-transcription-check",
+        help="validate one source-bound transcription package and report review state",
+    )
+    transcription_check.add_argument("package", type=Path)
 
     render_views = subparsers.add_parser(
         "render-views", help="derive semantic HTML and paged SVG from an authoring tree"
@@ -252,29 +268,6 @@ def _load_selection_tags(path: Path) -> dict[tuple[str, int], tuple[str, ...]]:
             raise ValueError(f"duplicate selection tag target: {key[0]}:{key[1]}")
         result[key] = tuple(str(tag) for tag in record["tags"])
     return result
-
-
-def _load_queue(path: Path) -> tuple[QueuePage, ...]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, list):
-        raise ValueError("benchmark queue must be a JSON array")
-    pages: list[QueuePage] = []
-    for index, item in enumerate(value):
-        if not isinstance(item, dict):
-            raise ValueError(f"benchmark queue item {index} must be an object")
-        tags = item.get("tags")
-        if not isinstance(tags, list):
-            raise ValueError(f"benchmark queue item {index} must have tags")
-        pages.append(
-            QueuePage(
-                str(item.get("source_sha256", "")),
-                int(item.get("source_page_index", -1)),
-                str(item.get("render_sha256", "")),
-                str(item.get("page_class", "")),
-                tuple(str(tag) for tag in tags),
-            )
-        )
-    return tuple(pages)
 
 
 def _load_raster_assets(path: Path | None) -> dict[str, Path]:
@@ -479,9 +472,18 @@ def run(argv: Sequence[str] | None = None) -> int:
         selection = select_stratified_pages(candidates, per_stratum=args.per_stratum)
         _write_json(selection.to_dict())
     elif args.command == "benchmark-queue-check":
-        queue = validate_60_page_queue(_load_queue(args.queue))
+        queue = validate_60_page_queue(load_wave1_queue(args.queue))
         _write_json(queue.to_dict())
         return 0 if queue.disposition == "selection-ready" else 1
+    elif args.command == "benchmark-transcription-init":
+        workspace_result = initialize_transcription_workspace(
+            load_wave1_queue(args.queue), args.output
+        )
+        _write_json(workspace_result.to_dict())
+    elif args.command == "benchmark-transcription-check":
+        status = transcription_status(load_transcription_package(args.package))
+        _write_json(status)
+        return 0 if status["disposition"] == "adjudicated" else 1
     elif args.command == "render-views":
         authoring_records = _load_authoring_records(args.authoring_tree)
         views = write_view_tree(

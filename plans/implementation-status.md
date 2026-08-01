@@ -51,6 +51,10 @@ foundation milestone is not a claim that the full decompiler exists.
   digest-bound evidence records; their compact form deliberately leaves raw
   bytes in the ignored work-root evidence store unless explicitly embedded.
 - No generative rewriting in the authoritative text path.
+- Strict Wave 1 queue and transcription-package JSON I/O, deterministic blank
+  transcription workspaces, truth-free per-region coverage templates, and CLI
+  review-state checks. Existing workspaces fail closed instead of being
+  overwritten.
 
 ### Phase 1 orchestration and validation
 
@@ -174,26 +178,33 @@ store and are referenced by digest rather than duplicated into the compact
 package. These are local smoke results, not committed output artifacts, and do
 not establish replica fidelity.
 
+Chinual 4th Edition page index 99 is now the first ignored scan benchmark
+pilot. Its exact source and 300-DPI render are digest-bound, PaddleOCR and Surya
+raw outputs are retained by digest, and a 37-region blank transcription
+workspace exists. Its disposition is intentionally `human-review-required`;
+no model output was promoted to ground truth.
+
 ## Current automated verification
 
 ```text
 uv run pytest -q
-175 passed
+179 passed
 
 uv run ruff check .
 All checks passed
 
 uv run mypy src/lispmdoc
-Success: no issues found in 74 source files
+Success: no issues found in 75 source files
 
 git status --short
-no initial commit exists; the flake files are staged so Nix can evaluate the
-Git-boundary source, and the remaining project files are untracked
+foundation and transcription-workspace commits exist; tracked working tree clean
 ```
 
 ## Not yet implemented
 
-- Representative, manually transcribed English benchmark corpus.
+- Representative, manually transcribed English benchmark corpus. The first
+  scan pilot and transcription tooling exist, but two independent human
+  transcriptions and adjudication have not happened.
 - Evidence-backed OCR engine selection by page class.
 - Automatic integration of preprocessing proposals into conversion. The
   foundation supports conservative deskew/border operations and explicit
