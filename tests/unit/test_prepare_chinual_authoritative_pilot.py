@@ -229,7 +229,7 @@ def test_r6_body_scale_fills_long_region_with_tighter_leading_and_section_is_tal
     assert body.generated_bbox[2] <= 2183
     assert section.font_size == 53
     assert pilot._physical_style("definition-name", "function") == (
-        "Liberation Sans",
+        "Liberation Mono",
         "normal",
         700,
     )
