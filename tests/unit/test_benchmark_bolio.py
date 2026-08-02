@@ -64,6 +64,40 @@ Every symbol has an associated property list.  See \x16(symbol-plist-section).
     assert extraction.issues == ()
 
 
+def test_reflows_editorial_prose_wraps_but_preserves_code_and_block_boundaries() -> None:
+    source = """\
+.defun sample argument
+This paragraph is wrapped in the
+source editor, but has  two spaces after a sentence.
+.lisp
+(first-line)
+  (second-line)
+.end_lisp
+This is a separate structural paragraph.
+.end_defun
+"""
+
+    extraction = extract_bolio(source, VARS)
+
+    assert [(block.kind, block.text, block.line_break_policy) for block in extraction.blocks] == [
+        ("function", "sample argument", "structural"),
+        (
+            "body",
+            "This paragraph is wrapped in the source editor, but has  two spaces after a sentence.",
+            "reflow-editorial",
+        ),
+        ("code", "(first-line)\n  (second-line)", "preserve"),
+        ("body", "This is a separate structural paragraph.", "reflow-editorial"),
+    ]
+    assert extraction.blocks[1].span.to_dict() == {"start_line": 2, "end_line": 3}
+    assert extraction.blocks[2].span.to_dict() == {"start_line": 5, "end_line": 6}
+
+
+def test_ambiguous_prose_edge_whitespace_fails_closed_instead_of_becoming_text() -> None:
+    with pytest.raises(BolioSyntaxError, match="edge whitespace"):
+        extract_bolio("text with a trailing space \nnext source line", VARS)
+
+
 def test_cross_reference_resolution_is_strict() -> None:
     with pytest.raises(MissingCrossReferenceError, match="absent from manual.vars"):
         extract_bolio("See \x16(not-present).", VARS)

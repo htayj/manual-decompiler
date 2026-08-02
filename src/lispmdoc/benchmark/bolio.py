@@ -1,9 +1,11 @@
 """Deterministic extraction of literal text from recovered MIT Bolio sources.
 
 This is deliberately a small, fail-visible reader rather than an attempt to
-re-typeset Bolio.  Its output is source-derived comparison material: it keeps
-the source's line breaks, punctuation, and case while separating the visible
-content into a few useful semantic blocks.  It never consults OCR output.
+re-typeset Bolio.  Its output is source-derived comparison material.  Physical
+newlines in ordinary prose are editorial wrapping, so they become a single
+space in canonical text.  Newlines in ``.lisp`` blocks are semantic and remain
+literal.  Blank lines and directives remain structural boundaries between
+blocks.  It never consults OCR output.
 
 Supported inline controls are the ones used by the recovered fourth-edition
 Lisp Machine Manual sources:
@@ -58,6 +60,7 @@ _SUPPORTED_DIRECTIVES = frozenset({
     "end_defun",
     "setq",
 })
+_LINE_BREAK_POLICIES = frozenset({"structural", "reflow-editorial", "preserve"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +99,7 @@ class BolioBlock:
     span: BolioSourceSpan
     name: str | None = None
     section_number: str | None = None
+    line_break_policy: str = "structural"
 
     def __post_init__(self) -> None:
         if self.kind not in {"function", "section", "body", "code"}:
@@ -104,10 +108,21 @@ class BolioBlock:
             raise BolioError("Bolio block text must not be empty")
         if self.kind != "section" and self.section_number is not None:
             raise BolioError("only section blocks may carry a section number")
+        if self.line_break_policy not in _LINE_BREAK_POLICIES:
+            raise BolioError("Bolio block has an unsupported line-break policy")
+        expected_policy = {
+            "body": "reflow-editorial",
+            "code": "preserve",
+            "function": "structural",
+            "section": "structural",
+        }[self.kind]
+        if self.line_break_policy != expected_policy:
+            raise BolioError("Bolio block line-break policy does not match its semantic kind")
 
     def to_dict(self) -> dict[str, object]:
         return {
             "kind": self.kind,
+            "line_break_policy": self.line_break_policy,
             "name": self.name,
             "section_number": self.section_number,
             "source_span": self.span.to_dict(),
@@ -253,6 +268,29 @@ def _normalize_visible_line(
     return "".join(output)
 
 
+def _reflow_editorial_prose(lines: list[str]) -> str:
+    """Make only source-editorial wrap boundaries non-semantic.
+
+    A non-empty run outside an explicit structural environment is one Bolio
+    paragraph.  Its physical source newlines are not printed line breaks.  We
+    use one separating space while retaining every interior character
+    (including meaningful double sentence spaces) of each line.  Leading or
+    trailing source whitespace is ambiguous: it might be editorial, or it
+    might encode an unimplemented layout feature.  Rather than normalize it
+    away, fail closed and require a richer Bolio model.  Code and directives do
+    not call this function.
+    """
+    if not lines:
+        raise BolioError("cannot reflow an empty Bolio prose block")
+    if any(line != line.strip(" \t") for line in lines):
+        raise BolioSyntaxError(
+            "Bolio prose line has edge whitespace; its layout semantics are unsupported"
+        )
+    if any(not line for line in lines):
+        raise BolioError("Bolio prose block contains an unclassified blank line")
+    return " ".join(lines)
+
+
 def normalize_bolio_line(
     line: str, variables: Mapping[str, str], line_number: int = 1
 ) -> tuple[str, tuple[BolioIssue, ...]]:
@@ -335,8 +373,9 @@ def extract_bolio(
         blocks.append(
             BolioBlock(
                 "body",
-                "\n".join(buffered_lines),
+                _reflow_editorial_prose(buffered_lines),
                 BolioSourceSpan(buffer_start, buffer_start + len(buffered_lines) - 1),
+                line_break_policy="reflow-editorial",
             )
         )
         buffered_lines.clear()
@@ -347,7 +386,14 @@ def extract_bolio(
         if not code_lines:
             return
         assert code_start is not None
-        blocks.append(BolioBlock("code", "\n".join(code_lines), BolioSourceSpan(code_start, end)))
+        blocks.append(
+            BolioBlock(
+                "code",
+                "\n".join(code_lines),
+                BolioSourceSpan(code_start, end),
+                line_break_policy="preserve",
+            )
+        )
         code_lines.clear()
         code_start = None
 

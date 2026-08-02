@@ -7,7 +7,10 @@ import argparse
 import hashlib
 import html
 import json
+import re
 import shutil
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -25,6 +28,7 @@ from lispmdoc.benchmark import (
     TextDerivation,
     TypesetterSourceProvenance,
     extract_bolio,
+    parse_manual_vars,
     render_reference_artifact,
 )
 from lispmdoc.benchmark.workspace import expected_run_from_dict
@@ -36,6 +40,45 @@ SOURCE_SHA256 = "36352edeacc7213bbcf9037e4cadad7c068066b352d130450f2e7986b1a4216
 VARS_SHA256 = "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba"
 PAGE_WIDTH = 2550
 PAGE_HEIGHT = 3300
+SERIF_FONT = "'Liberation Serif', 'Times New Roman', serif"
+MONO_FONT = "'Liberation Mono', 'Courier New', monospace"
+
+
+@dataclass(frozen=True, slots=True)
+class InlineRun:
+    """A visible piece of recovered source with its conservative font intent."""
+
+    text: str
+    style: str = "roman"
+
+
+@dataclass(frozen=True, slots=True)
+class PositionedRun:
+    text: str
+    style: str
+    x: float
+
+
+@dataclass(frozen=True, slots=True)
+class LayoutLine:
+    runs: tuple[PositionedRun, ...]
+    baseline: float
+
+
+@dataclass(frozen=True, slots=True)
+class RegionLayout:
+    lines: tuple[LayoutLine, ...]
+    font_size: float
+    line_height: float
+    generated_bbox: tuple[float, float, float, float]
+
+
+_FONT_BY_SELECTOR = {"2": "italic", "3": "code"}
+_BASE_FONT_SIZE = {"body": 42.0, "code": 42.0, "function": 46.0, "section": 50.0}
+_LINE_HEIGHT = {"body": 1.28, "code": 1.18, "function": 1.16, "section": 1.14}
+_NARROW = frozenset("ilIjtfr.,;:!|'`")
+_WIDE = frozenset("mwMW@%")
+_PUNCTUATION = frozenset("()[]{}-_/\\")
 
 
 class _TextExtractor(HTMLParser):
@@ -86,28 +129,274 @@ def _semantic_type(kind: str) -> str:
     ]
 
 
-def _svg(reference_regions: list[dict[str, object]]) -> bytes:
+def _collapse_editorial_newlines(value: str) -> str:
+    """Turn recovered editor line breaks into reflowable paragraph spacing.
+
+    Bolio physical lines are source-editor convenience, not evidence of where
+    the printed compositor broke a prose line. Code is handled separately.
+    """
+
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    return " ".join(normalized.split("\n"))
+
+
+def _merge_runs(runs: Sequence[InlineRun]) -> tuple[InlineRun, ...]:
+    merged: list[InlineRun] = []
+    for run in runs:
+        if not run.text:
+            continue
+        if merged and merged[-1].style == run.style:
+            merged[-1] = InlineRun(merged[-1].text + run.text, run.style)
+        else:
+            merged.append(run)
+    return tuple(merged)
+
+
+def _inline_runs_from_bolio(
+    raw_lines: Sequence[str], variables: Mapping[str, str], fallback: str
+) -> tuple[InlineRun, ...]:
+    """Recover the small inline font vocabulary used by this source slice.
+
+    ``^F2``/``^F3`` select italic/code and ``^F*`` restores roman. The
+    extractor intentionally removes these controls for literal truth; this
+    renderer consumes them only as rendering semantics and falls back visibly
+    to source-derived text if an unexpected construct prevents alignment.
+    """
+
+    runs: list[InlineRun] = []
+    style = "roman"
+    bold = False
+    for line_number, source_line in enumerate(raw_lines):
+        if line_number:
+            runs.append(InlineRun(" ", style))
+        index = 0
+        while index < len(source_line):
+            character = source_line[index]
+            if character == "\x06":
+                if index + 1 >= len(source_line):
+                    return (InlineRun(_collapse_editorial_newlines(fallback)),)
+                selector = source_line[index + 1]
+                style = _FONT_BY_SELECTOR.get(selector, "roman")
+                index += 2
+                continue
+            if character == "\x11":
+                if index + 1 >= len(source_line):
+                    return (InlineRun(_collapse_editorial_newlines(fallback)),)
+                runs.append(InlineRun(source_line[index + 1], "bold" if bold else style))
+                index += 2
+                continue
+            if (
+                character == "\x16"
+                and index + 1 < len(source_line)
+                and source_line[index + 1] == "("
+            ):
+                closing = source_line.find(")", index + 2)
+                if closing == -1:
+                    return (InlineRun(_collapse_editorial_newlines(fallback)),)
+                name = source_line[index + 2 : closing].upper()
+                replacement = variables.get(name)
+                if replacement is None:
+                    return (InlineRun(_collapse_editorial_newlines(fallback)),)
+                runs.append(InlineRun(replacement, "bold" if bold else style))
+                index = closing + 1
+                continue
+            if character == "\x19":
+                bold = True
+                index += 1
+                continue
+            if character == "\x18":
+                bold = False
+                index += 1
+                continue
+            runs.append(InlineRun(character, "bold" if bold else style))
+            index += 1
+    rendered = _merge_runs(runs)
+    rendered_text = _collapse_editorial_newlines("".join(run.text for run in rendered))
+    expected_text = _collapse_editorial_newlines(fallback)
+    if rendered_text != expected_text:
+        return (InlineRun(expected_text),)
+    # Editorial newlines become one space; literal intra-line spacing remains.
+    normalized: list[InlineRun] = []
+    for run in rendered:
+        text = _collapse_editorial_newlines(run.text)
+        normalized.append(InlineRun(text, run.style))
+    return _merge_runs(normalized)
+
+
+def semantic_runs(
+    *,
+    kind: str,
+    reference_text: str,
+    raw_lines: Sequence[str],
+    variables: Mapping[str, str],
+) -> tuple[InlineRun, ...]:
+    """Return print-intent runs without promoting source editor newlines."""
+
+    if kind == "function":
+        pieces = reference_text.split()
+        if not pieces:
+            raise ValueError("function heading must contain a function name")
+        return (InlineRun(pieces[0], "code"),) + tuple(
+            InlineRun(f" {argument}", "italic") for argument in pieces[1:]
+        )
+    if kind == "code":
+        return (InlineRun(reference_text, "code"),)
+    if kind == "section":
+        return (InlineRun(reference_text, "bold"),)
+    return _inline_runs_from_bolio(raw_lines, variables, reference_text)
+
+
+def _character_width(character: str, style: str, size: float) -> float:
+    if character == " ":
+        factor = 0.26
+    elif character in _NARROW:
+        factor = 0.27
+    elif character in _WIDE:
+        factor = 0.78
+    elif character in _PUNCTUATION:
+        factor = 0.38
+    elif character.isupper():
+        factor = 0.62
+    else:
+        factor = 0.51
+    if style == "code":
+        factor = 0.60
+    elif style == "bold":
+        factor *= 1.06
+    elif style == "italic":
+        factor *= 1.02
+    return factor * size
+
+
+def _run_width(run: InlineRun, size: float) -> float:
+    return sum(_character_width(character, run.style, size) for character in run.text)
+
+
+def _word_runs(runs: Sequence[InlineRun]) -> tuple[tuple[InlineRun, ...], ...]:
+    """Split styled text into atomic word-plus-space groups for wrapping."""
+
+    words: list[list[InlineRun]] = []
+    current: list[InlineRun] = []
+    for run in runs:
+        for fragment in re.findall(r"\S+\s*|\s+", run.text):
+            current.append(InlineRun(fragment, run.style))
+            if fragment[-1].isspace():
+                words.append(current)
+                current = []
+    if current:
+        words.append(current)
+    return tuple(tuple(word) for word in words)
+
+
+def _wrap_runs(
+    runs: Sequence[InlineRun], width: float, size: float
+) -> tuple[tuple[InlineRun, ...], ...]:
+    lines: list[list[InlineRun]] = [[]]
+    current_width = 0.0
+    for word in _word_runs(runs):
+        word_width = sum(_run_width(run, size) for run in word)
+        if lines[-1] and current_width + word_width > width:
+            lines.append([])
+            current_width = 0.0
+        lines[-1].extend(word)
+        current_width += word_width
+    return tuple(_merge_runs(line) for line in lines if line)
+
+
+def layout_region(
+    *,
+    kind: str,
+    runs: Sequence[InlineRun],
+    bbox: tuple[int, int, int, int],
+    paragraph_indent: bool,
+) -> RegionLayout:
+    """Fit semantic runs into scan-derived geometry at readable page scale."""
+
+    x1, y1, x2, y2 = bbox
+    base_size = _BASE_FONT_SIZE[kind]
+    max_height = y2 - y1
+    # A first-line indent is a print-layout property. Source paragraphs after a
+    # section begin at the page margin; definition explanations already have a
+    # scan-measured block indent and therefore do not receive a second one.
+    indent = 150.0 if paragraph_indent else 0.0
+    size = base_size
+    lines: tuple[tuple[InlineRun, ...], ...] = ()
+    for _ in range(24):
+        if kind == "code":
+            code_text = "".join(run.text for run in runs)
+            provisional = tuple(
+                (InlineRun(line, "code"),) if line else ()
+                for line in code_text.split("\n")
+            )
+            width_fits = all(
+                sum(_run_width(run, size) for run in line) <= x2 - x1
+                for line in provisional
+            )
+        else:
+            first_width = x2 - (x1 + indent)
+            normal_width = x2 - x1
+            provisional = _wrap_runs(runs, first_width, size)
+            if len(provisional) > 1 and indent:
+                remaining = _wrap_runs(
+                    tuple(run for line in provisional[1:] for run in line), normal_width, size
+                )
+                provisional = provisional[:1] + remaining
+            width_fits = True
+        line_height = size * _LINE_HEIGHT[kind]
+        if (
+            width_fits and len(provisional) * line_height <= max_height * 0.98
+        ) or size <= 34.0:
+            lines = provisional
+            break
+        size -= 1.0
+    if not lines:
+        raise ValueError("could not fit a non-empty semantic run into its review region")
+    line_height = size * _LINE_HEIGHT[kind]
+    laid_out: list[LayoutLine] = []
+    max_right = float(x1)
+    min_x = float(x2)
+    for line_index, line in enumerate(lines):
+        line_x = x1 + (indent if line_index == 0 else 0.0)
+        baseline = y1 + size * 0.90 + line_index * line_height
+        positioned: list[PositionedRun] = []
+        cursor = float(line_x)
+        for run in line:
+            positioned.append(PositionedRun(run.text, run.style, cursor))
+            cursor += _run_width(run, size)
+        max_right = max(max_right, cursor)
+        min_x = min(min_x, float(line_x))
+        laid_out.append(LayoutLine(tuple(positioned), baseline))
+    bottom = min(float(y2), laid_out[-1].baseline + size * 0.25)
+    return RegionLayout(tuple(laid_out), size, line_height, (min_x, float(y1), max_right, bottom))
+
+
+def _style_attributes(style: str) -> str:
+    if style == "code":
+        return f'font-family="{MONO_FONT}"'
+    if style == "italic":
+        return f'font-family="{SERIF_FONT}" font-style="italic"'
+    if style == "bold":
+        return f'font-family="{SERIF_FONT}" font-weight="700"'
+    return f'font-family="{SERIF_FONT}"'
+
+
+def _svg(layouts: Sequence[RegionLayout]) -> bytes:
     content = [
         '<svg xmlns="http://www.w3.org/2000/svg" width="612" height="792" viewBox="0 0 2550 3300">',
         '<rect width="2550" height="3300" fill="#fffdf8"/>',
     ]
-    for item in reference_regions:
-        x1, y1, x2, y2 = item["bbox"]  # type: ignore[misc]
-        kind = str(item["kind"])
-        size = 31 if kind in {"function", "section"} else 24
-        weight = "700" if kind in {"function", "section"} else "400"
-        content.append(
-            f'<rect x="{x1}" y="{y1}" width="{x2 - x1}" height="{y2 - y1}" '
-            'fill="none" stroke="#d87542" stroke-width="3" opacity="0.55"/>'
-        )
-        for line_index, line in enumerate(str(item["text"]).splitlines()):
-            baseline = y1 + size + line_index * (size + 8)
-            if baseline >= y2:
-                break
+    for layout in layouts:
+        for line in layout.lines:
             content.append(
-                f'<text x="{x1}" y="{baseline}" font-family="serif" font-size="{size}" '
-                f'font-weight="{weight}" fill="#17201d">{html.escape(line)}</text>'
+                f'<text y="{line.baseline:.2f}" font-size="{layout.font_size:.2f}" '
+                'fill="#17201d" xml:space="preserve">'
             )
+            for run in line.runs:
+                content.append(
+                    f'<tspan x="{run.x:.2f}" {_style_attributes(run.style)}>'
+                    f"{html.escape(run.text)}</tspan>"
+                )
+            content.append("</text>")
     content.append("</svg>")
     return ("\n".join(content) + "\n").encode("utf-8")
 
@@ -116,7 +405,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument(
-        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review")
+        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review-r5")
     )
     args = parser.parse_args()
     root = args.project_root.resolve()
@@ -143,15 +432,19 @@ def main() -> int:
         if _sha256(path) != digest:
             raise ValueError(f"pilot input digest changed: {path}")
 
+    source_text = source.read_text(encoding="latin-1")
+    variables_text = variables.read_text(encoding="latin-1")
     extraction = extract_bolio(
-        source.read_text(encoding="latin-1"),
-        variables.read_text(encoding="latin-1"),
+        source_text,
+        variables_text,
         start_line=126,
         end_line=180,
     )
     if extraction.issues:
         raise ValueError("Bolio extraction has unresolved issues")
     reference = render_reference_artifact(extraction)
+    source_lines = source_text.splitlines()
+    source_variables = parse_manual_vars(variables_text)
 
     raw_surya = json.loads(surya.read_text(encoding="utf-8"))
     blocks = raw_surya["p000100"][0]["blocks"]
@@ -169,6 +462,18 @@ def main() -> int:
             "implementation_files": [
                 {"path": path.relative_to(root).as_posix(), "sha256": _sha256(path)}
                 for path in converter_files
+            ],
+            "regions": [
+                {
+                    "bolio_source_span": [
+                        region.bolio_start_line,
+                        region.bolio_end_line,
+                    ],
+                    "index": region.index,
+                    "kind": region.kind,
+                    "line_break_policy": region.line_break_policy,
+                }
+                for region in reference.regions
             ],
             "source_line_span": [126, 180],
         }
@@ -188,7 +493,7 @@ def main() -> int:
     )
     truth_regions: list[AuthoritativeRegionTruth] = []
     review_regions: list[dict[str, object]] = []
-    svg_regions: list[dict[str, object]] = []
+    layouts: list[RegionLayout] = []
     for region_id, reference_region, surya_block in zip(
         region_ids, reference.regions, content_blocks, strict=True
     ):
@@ -216,11 +521,35 @@ def main() -> int:
                 layout_verification_state="human-review-required",
             )
         )
-        normalized_box = [
+        raw_lines = source_lines[
+            reference_region.bolio_start_line - 1 : reference_region.bolio_end_line
+        ]
+        runs = semantic_runs(
+            kind=reference_region.kind,
+            reference_text=reference_region.text,
+            raw_lines=raw_lines,
+            variables=source_variables,
+        )
+        paragraph_indent = semantic == "prose" and x1 <= round(PAGE_WIDTH * 0.13)
+        layout = layout_region(
+            kind=reference_region.kind,
+            runs=runs,
+            bbox=(x1, y1, x2, y2),
+            paragraph_indent=paragraph_indent,
+        )
+        layouts.append(layout)
+        normalized_reference_box = [
             x1 / PAGE_WIDTH,
             y1 / PAGE_HEIGHT,
             (x2 - x1) / PAGE_WIDTH,
             (y2 - y1) / PAGE_HEIGHT,
+        ]
+        generated_x1, generated_y1, generated_x2, generated_y2 = layout.generated_bbox
+        normalized_generated_box = [
+            generated_x1 / PAGE_WIDTH,
+            generated_y1 / PAGE_HEIGHT,
+            (generated_x2 - generated_x1) / PAGE_WIDTH,
+            (generated_y2 - generated_y1) / PAGE_HEIGHT,
         ]
         review_regions.append(
             {
@@ -229,13 +558,10 @@ def main() -> int:
                 "kind": semantic,
                 "label": reference_region.text.splitlines()[0][:80],
                 "ocr_text": _html_text(str(surya_block["html"])),
-                "reference_box": normalized_box,
-                "generated_box": normalized_box,
+                "reference_box": normalized_reference_box,
+                "generated_box": normalized_generated_box,
                 "source_text": reference_region.text,
             }
-        )
-        svg_regions.append(
-            {"bbox": [x1, y1, x2, y2], "kind": reference_region.kind, "text": reference_region.text}
         )
 
     package = AuthoritativeTruthPackage(
@@ -275,7 +601,7 @@ def main() -> int:
     scan_copy = assets / "scan-p000100.png"
     shutil.copyfile(scan, scan_copy)
     replica = assets / "source-layout-p000100.svg"
-    _write_new(replica, _svg(svg_regions))
+    _write_new(replica, _svg(layouts))
     _write_new(output / "reference.txt", reference.bytes)
     _write_new(output / "converter-manifest.json", converter_manifest)
     _write_new(output / "truth-package.json", package.to_json().encode("utf-8"))
@@ -313,13 +639,29 @@ def main() -> int:
                 "MCL:LMMAN;FD.SYM 70. This confirms mapping, not transcription."
             ),
             "region": (
-                "Accept if recovered wording and the highlighted scan region agree and the box "
-                "covers the complete region. Use needs fix for line-break or box corrections."
+                "Accept if recovered wording, semantic typeface (code and italic arguments), "
+                "paragraph reflow/indent, and the highlighted scan region agree. Use needs fix "
+                "for source-layout, text-scale, or box corrections."
             ),
         },
         "title": "Chinual 4th edition · authoritative-source pilot",
     }
     _write_new(output / "review-project.json", _json_bytes(review_project))
+    prior_annotations = (
+        root / "work/benchmark-pilot/authoritative-review/review-project.annotations.json"
+    )
+    prior_project = root / "work/benchmark-pilot/authoritative-review/review-project.json"
+    if prior_annotations.is_file() and prior_project.is_file():
+        _write_new(
+            output / "prior-review-feedback.json",
+            _json_bytes(
+                {
+                    "annotations": json.loads(prior_annotations.read_text(encoding="utf-8")),
+                    "prior_review_project_sha256": _sha256(prior_project),
+                    "status": "retained-separately; do-not-apply-to-new-revision",
+                }
+            ),
+        )
     _write_new(
         output / "material-paths.json",
         _json_bytes(

@@ -19,6 +19,7 @@ class ReferenceRegion:
     source_span: SourceSpan
     bolio_start_line: int
     bolio_end_line: int
+    line_break_policy: str
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -28,6 +29,7 @@ class ReferenceRegion:
             },
             "index": self.index,
             "kind": self.kind,
+            "line_break_policy": self.line_break_policy,
             "source_span": self.source_span.to_dict(),
             "text": self.text,
         }
@@ -35,7 +37,7 @@ class ReferenceRegion:
 
 @dataclass(frozen=True, slots=True)
 class ReferenceArtifact:
-    """UTF-8 authority text plus exact selectors and extraction findings."""
+    """UTF-8 canonical authority text plus exact selectors and source findings."""
 
     text: str
     regions: tuple[ReferenceRegion, ...]
@@ -64,7 +66,13 @@ def _printed_block_text(block: BolioBlock) -> str:
 
 
 def render_reference_artifact(extraction: BolioExtraction) -> ReferenceArtifact:
-    """Render blocks with blank separators while retaining exact line selectors."""
+    """Render canonical blocks while retaining source and line-break provenance.
+
+    ``body`` blocks arrive with editorial source wrapping reflowed by the
+    Bolio reader.  ``code`` blocks retain their literal newlines.  The blank
+    separator inserted here is an artifact-level structural boundary, never a
+    claim that a source physical newline was printed.
+    """
     output_lines: list[str] = []
     regions: list[ReferenceRegion] = []
     for index, block in enumerate(extraction.blocks):
@@ -83,6 +91,7 @@ def render_reference_artifact(extraction: BolioExtraction) -> ReferenceArtifact:
                 SourceSpan(start_line, end_line),
                 block.span.start_line,
                 block.span.end_line,
+                block.line_break_policy,
             )
         )
     text = "\n".join(output_lines) + ("\n" if output_lines else "")

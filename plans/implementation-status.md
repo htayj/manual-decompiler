@@ -197,9 +197,18 @@ Chinual 4th Edition page index 99 is now the first ignored authoritative-source
 benchmark pilot. Its exact source and 300-DPI render are digest-bound, and
 PaddleOCR and Surya raw outputs are retained separately. Recovered `FD.SYM 70`
 and `manual.vars` produce 15 semantic source regions with zero extraction
-findings. The package is materially verified but remains
-`human-mapping-review-required`; OCR-derived geometry also remains unverified.
+findings. Human review accepted the page/source mapping and retained a
+digest-bound `source-scan-discrepancy` package: all 15 replica regions need
+typography/layout correction, including semantic prose reflow, font scale,
+paragraph indentation, monospace function/code names, and italic arguments.
 No model output was promoted to ground truth.
+
+The semantic reflow correction is implemented and records line-break policy in
+the converter artifact. A reproducible provisional text-only spatial report
+finds zero Surya text errors on the 15 content regions and PaddleOCR CER 0.5845%
+/ WER 3.5135%, with no content omissions for either engine. It remains
+provisional because this is one clean page and the replica layout has not been
+accepted.
 
 ## Current automated verification
 

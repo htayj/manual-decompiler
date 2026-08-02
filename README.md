@@ -113,3 +113,6 @@ ignored `work/` and is bound to the exact project and asset hashes.
 saved decisions: page acceptance verifies mapping, every region must be
 accepted for layout readiness, and corrections/rejections remain discrepancies.
 The material gate reloads both exact files and refuses digest-shaped substitutes.
+The current Chinual pilot also has a reproducible, explicitly provisional
+spatial text report via `scripts/evaluate-chinual-authoritative-pilot`; it does
+not select an OCR engine from a single page.

@@ -168,9 +168,33 @@ and 300-DPI render SHA-256
 `54cb0a866ecb74d6594ab834b83865221df1feb1cc51fbcfb2c4b5f568f7f502`.
 Recovered Bolio `FD.SYM 70` plus `manual.vars` now produces 15 exact semantic
 text regions with zero extraction findings. The scan footer, printed page, and
-heading provide mapping anchors. Source wording and cross-references are
-automatic; the remaining page mapping and OCR-derived region boxes are exposed
-through the localhost Vite review app and remain review-required.
+heading provide mapping anchors. Human review accepted the page/source mapping
+and flagged all 15 initial replica regions for typography/layout repair: source
+editor newlines were incorrectly treated as printed breaks, text was too small,
+paragraph indentation was missing, and function/code/argument font intent was
+lost. The saved annotation bytes remain attached to that exact first revision.
+
+The corrected Bolio converter now explicitly reflows ordinary prose while
+preserving code and structural breaks. A provisional text-only spatial
+evaluation of the reviewed first revision reports:
+
+- Surya: 0 CER, 0 WER, no content-region omissions;
+- PaddleOCR: 0.5845% CER, 3.5135% WER, no content-region omissions.
+
+Both engines left the same five page header/footer lines outside the 15 content
+regions; those lines remain explicit unassigned evidence. This is one clean
+page, and its replica layout is not accepted, so the report is not an engine
+selection or replacement-readiness claim.
+
+Reproduce the ignored report from the retained raw outputs and exact saved
+review bytes with:
+
+```sh
+uv run python scripts/evaluate-chinual-authoritative-pilot
+```
+
+The script refuses to overwrite an existing report and labels its result
+`provisional-text-only` while reviewed replica discrepancies remain.
 
 Raw candidate outputs are retained separately from truth:
 

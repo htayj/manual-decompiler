@@ -50,6 +50,12 @@ from .report import (
 )
 from .review_annotations import apply_review_annotations
 from .source_reference import ReferenceArtifact, ReferenceRegion, render_reference_artifact
+from .spatial_evaluation import (
+    SpatialEvaluation,
+    SpatialTextLine,
+    evaluate_spatial_lines,
+    semantic_ocr_text,
+)
 from .wave1 import (
     REQUIRED_COMPOSITION,
     WAVE1_VERSION,
@@ -124,6 +130,8 @@ __all__ = [
     "ReferenceRegion",
     "RegionGeometry",
     "SourceSpan",
+    "SpatialEvaluation",
+    "SpatialTextLine",
     "SupportingSourceFile",
     "TableCellTruth",
     "TranscribedRegion",
@@ -137,12 +145,14 @@ __all__ = [
     "apply_review_annotations",
     "candidates_from_inspections",
     "extract_bolio",
+    "evaluate_spatial_lines",
     "ground_truth_digest",
     "load_corpus",
     "normalize_bolio_line",
     "parse_manual_vars",
     "render_reference_artifact",
     "select_stratified_pages",
+    "semantic_ocr_text",
     "hard_gate",
     "stratified_measurements",
     "validate_60_page_queue",
