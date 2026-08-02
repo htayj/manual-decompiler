@@ -9,6 +9,15 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
       python = pkgs.python312;
+      fontsConf = pkgs.writeText "lispmdoc-fonts.conf" ''
+        <?xml version="1.0"?>
+        <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+        <fontconfig>
+          <dir>${pkgs.liberation_ttf}/share/fonts/truetype</dir>
+          <cachedir prefix="xdg">fontconfig</cachedir>
+          <config><rescan><int>0</int></rescan></config>
+        </fontconfig>
+      '';
     in
     {
       devShells.${system}.default = pkgs.mkShell {
@@ -21,6 +30,10 @@
           pkgs.mupdf
           pkgs.resvg
           pkgs.harfbuzz
+          pkgs.pango
+          pkgs.cairo
+          pkgs.fontconfig
+          pkgs.liberation_ttf
           pkgs.woff2
           pkgs.potrace
           pkgs.chromium
@@ -43,6 +56,7 @@
           export LISPMDOC_CXX_RUNTIME="${pkgs.stdenv.cc.cc.lib}/lib"
           export LISPMDOC_PODMAN_BIN="${pkgs.podman}/bin/podman"
           export CONTAINERS_STORAGE_CONF="/usr/share/containers/storage.conf"
+          export FONTCONFIG_FILE="${fontsConf}"
 
           mkdir -p "$LISPMDOC_MODEL_ROOT" "$LISPMDOC_CONTAINER_CACHE"
         '';
