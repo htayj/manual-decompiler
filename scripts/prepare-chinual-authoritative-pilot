@@ -73,9 +73,12 @@ class RegionLayout:
     generated_bbox: tuple[float, float, float, float]
 
 
-_FONT_BY_SELECTOR = {"2": "italic", "3": "code"}
-_BASE_FONT_SIZE = {"body": 42.0, "code": 42.0, "function": 46.0, "section": 50.0}
-_LINE_HEIGHT = {"body": 1.28, "code": 1.18, "function": 1.16, "section": 1.14}
+# In this recovered font map, ^F3 is a bold roman face.  It is distinct from
+# Lisp display/code blocks and from the bold monospace function-name treatment.
+_FONT_BY_SELECTOR = {"2": "italic", "3": "bold"}
+_BASE_FONT_SIZE = {"body": 44.0, "code": 40.0, "function": 46.0, "section": 53.0}
+_LINE_HEIGHT = {"body": 1.20, "code": 1.18, "function": 1.16, "section": 1.14}
+_OPTICAL_LEFT_INSET_FACTOR = 0.13
 _NARROW = frozenset("ilIjtfr.,;:!|'`")
 _WIDE = frozenset("mwMW@%")
 _PUNCTUATION = frozenset("()[]{}-_/\\")
@@ -157,7 +160,7 @@ def _inline_runs_from_bolio(
 ) -> tuple[InlineRun, ...]:
     """Recover the small inline font vocabulary used by this source slice.
 
-    ``^F2``/``^F3`` select italic/code and ``^F*`` restores roman. The
+    ``^F2``/``^F3`` select italic/bold roman and ``^F*`` restores roman. The
     extractor intentionally removes these controls for literal truth; this
     renderer consumes them only as rendering semantics and falls back visibly
     to source-derived text if an unexpected construct prevents alignment.
@@ -233,17 +236,23 @@ def semantic_runs(
     """Return print-intent runs without promoting source editor newlines."""
 
     if kind == "function":
-        pieces = reference_text.split()
-        if not pieces:
+        match = re.fullmatch(r"(\S+)(.*)", reference_text, flags=re.DOTALL)
+        if match is None:
             raise ValueError("function heading must contain a function name")
-        return (InlineRun(pieces[0], "code"),) + tuple(
-            InlineRun(f" {argument}", "italic") for argument in pieces[1:]
+        runs = (InlineRun(match.group(1), "function"),) + tuple(
+            InlineRun(argument, "italic")
+            for argument in re.findall(r"\s+\S+", match.group(2), flags=re.DOTALL)
         )
-    if kind == "code":
-        return (InlineRun(reference_text, "code"),)
-    if kind == "section":
-        return (InlineRun(reference_text, "bold"),)
-    return _inline_runs_from_bolio(raw_lines, variables, reference_text)
+    elif kind == "code":
+        runs = (InlineRun(reference_text, "code"),)
+    elif kind == "section":
+        runs = (InlineRun(reference_text, "bold"),)
+    else:
+        runs = _inline_runs_from_bolio(raw_lines, variables, reference_text)
+    expected = reference_text if kind == "code" else _collapse_editorial_newlines(reference_text)
+    if "".join(run.text for run in runs) != expected:
+        raise ValueError("semantic runs must concatenate to the source-derived rendered text")
+    return runs
 
 
 def _character_width(character: str, style: str, size: float) -> float:
@@ -259,10 +268,8 @@ def _character_width(character: str, style: str, size: float) -> float:
         factor = 0.62
     else:
         factor = 0.51
-    if style == "code":
+    if style in {"code", "function"}:
         factor = 0.60
-    elif style == "bold":
-        factor *= 1.06
     elif style == "italic":
         factor *= 1.02
     return factor * size
@@ -303,6 +310,14 @@ def _wrap_runs(
     return tuple(_merge_runs(line) for line in lines if line)
 
 
+def _used_height(line_count: int, size: float, line_height: float) -> float:
+    """Return the actual top-to-glyph-bottom height of a laid-out region."""
+
+    if line_count < 1:
+        return 0.0
+    return size * 0.90 + (line_count - 1) * line_height + size * 0.25
+
+
 def layout_region(
     *,
     kind: str,
@@ -318,7 +333,7 @@ def layout_region(
     # A first-line indent is a print-layout property. Source paragraphs after a
     # section begin at the page margin; definition explanations already have a
     # scan-measured block indent and therefore do not receive a second one.
-    indent = 150.0 if paragraph_indent else 0.0
+    indent = 100.0 if paragraph_indent else 0.0
     size = base_size
     lines: tuple[tuple[InlineRun, ...], ...] = ()
     for _ in range(24):
@@ -343,9 +358,10 @@ def layout_region(
                 provisional = provisional[:1] + remaining
             width_fits = True
         line_height = size * _LINE_HEIGHT[kind]
-        if (
-            width_fits and len(provisional) * line_height <= max_height * 0.98
-        ) or size <= 34.0:
+        if width_fits and _used_height(len(provisional), size, line_height) <= max_height:
+            lines = provisional
+            break
+        if size <= 34.0:
             lines = provisional
             break
         size -= 1.0
@@ -356,7 +372,9 @@ def layout_region(
     max_right = float(x1)
     min_x = float(x2)
     for line_index, line in enumerate(lines):
-        line_x = x1 + (indent if line_index == 0 else 0.0)
+        # Scan bboxes include a small amount of leading white. Keep a stable
+        # half-space optical inset instead of rendering every line flush-left.
+        line_x = x1 + (indent if line_index == 0 else 0.0) + size * _OPTICAL_LEFT_INSET_FACTOR
         baseline = y1 + size * 0.90 + line_index * line_height
         positioned: list[PositionedRun] = []
         cursor = float(line_x)
@@ -373,6 +391,8 @@ def layout_region(
 def _style_attributes(style: str) -> str:
     if style == "code":
         return f'font-family="{MONO_FONT}"'
+    if style == "function":
+        return f'font-family="{MONO_FONT}" font-weight="700"'
     if style == "italic":
         return f'font-family="{SERIF_FONT}" font-style="italic"'
     if style == "bold":
@@ -405,7 +425,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument(
-        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review-r5")
+        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review-r6")
     )
     args = parser.parse_args()
     root = args.project_root.resolve()
@@ -648,9 +668,9 @@ def main() -> int:
     }
     _write_new(output / "review-project.json", _json_bytes(review_project))
     prior_annotations = (
-        root / "work/benchmark-pilot/authoritative-review/review-project.annotations.json"
+        root / "work/benchmark-pilot/authoritative-review-r5/review-project.annotations.json"
     )
-    prior_project = root / "work/benchmark-pilot/authoritative-review/review-project.json"
+    prior_project = root / "work/benchmark-pilot/authoritative-review-r5/review-project.json"
     if prior_annotations.is_file() and prior_project.is_file():
         _write_new(
             output / "prior-review-feedback.json",
@@ -658,6 +678,7 @@ def main() -> int:
                 {
                     "annotations": json.loads(prior_annotations.read_text(encoding="utf-8")),
                     "prior_review_project_sha256": _sha256(prior_project),
+                    "prior_review_revision": "r5",
                     "status": "retained-separately; do-not-apply-to-new-revision",
                 }
             ),

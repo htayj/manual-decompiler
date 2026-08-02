@@ -210,6 +210,13 @@ finds zero Surya text errors on the 15 content regions and PaddleOCR CER 0.5845%
 provisional because this is one clean page and the replica layout has not been
 accepted.
 
+The second r5 review accepted two regions, requested eleven residual font/fit
+changes, and left two regions undecided. Revision r6 implements those notes
+without weakening the gate: it corrects the recovered bold font selector,
+bold-monospace function headings, code/prose/section scale, leading, optical
+left inset, and paragraph indentation. Exact r5 feedback is retained beside
+r6 but cannot apply because the review-project digest changed.
+
 ## Current automated verification
 
 ```text

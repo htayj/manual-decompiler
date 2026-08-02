@@ -186,6 +186,13 @@ regions; those lines remain explicit unassigned evidence. This is one clean
 page, and its replica layout is not accepted, so the report is not an engine
 selection or replacement-readiness claim.
 
+A second digest-bound review accepted the r5 page mapping and two regions,
+flagged eleven for smaller typography refinements, and left two undecided. The
+r6 revision preserves that feedback separately and corrects recovered `^F3`
+as bold roman, bold-monospace function headings, font scale/leading, optical
+left inset, and paragraph indent. It remains review-required until r6 is
+visually accepted; r5 annotations cannot be replayed against it.
+
 Reproduce the ignored report from the retained raw outputs and exact saved
 review bytes with:
 
