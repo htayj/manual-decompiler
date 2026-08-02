@@ -197,47 +197,56 @@ Chinual 4th Edition page index 99 is now the first ignored authoritative-source
 benchmark pilot. Its exact source and 300-DPI render are digest-bound, and
 PaddleOCR and Surya raw outputs are retained separately. Recovered `FD.SYM 70`
 and `manual.vars` produce 15 semantic source regions with zero extraction
-findings. Human review accepted the page/source mapping and retained a
-digest-bound `source-scan-discrepancy` package: all 15 replica regions need
-typography/layout correction, including semantic prose reflow, font scale,
-paragraph indentation, monospace function/code names, and italic arguments.
-No model output was promoted to ground truth.
+findings. Human review accepted the page/source mapping and every region in
+revision r11. Material verification binds the reviewed package to the source
+archive, source member, variables, converter, canonical text, project, and
+annotations. No model output was promoted to ground truth.
 
-The semantic reflow correction is implemented and records line-break policy in
-the converter artifact. A reproducible provisional text-only spatial report
-finds zero Surya text errors on the 15 content regions and PaddleOCR CER 0.5845%
-/ WER 3.5135%, with no content omissions for either engine. It remains
-provisional because this is one clean page and the replica layout has not been
-accepted.
+The semantic reflow correction records line-break policy in the converter
+artifact. Source font controls and definition directives now produce reusable,
+source-scoped semantic spans; no word-spelling rule decides bold, italic, or
+inline-code formatting. A separate reusable native Pango layer maps those
+spans to physical font styles and emits vector SVG paths from one continuous
+layout per region. Refactoring the pilot onto those libraries reproduced the
+accepted r11 SVG byte-for-byte, SHA-256
+`850b3ffe02bb7a18e34e2b8d09b635a5fa97d6658b17e6233fbd34581c25e893`.
 
-The second r5 review accepted two regions, requested eleven residual font/fit
-changes, and left two regions undecided. Revision r6 implements those notes
-without weakening the gate: it corrects the recovered bold font selector,
-bold-monospace function headings, code/prose/section scale, leading, optical
-left inset, and paragraph indentation. Exact r5 feedback is retained beside
-r6 but cannot apply because the review-project digest changed.
+A reproducible provisional text-only spatial report finds zero Surya text
+errors on the 15 content regions and PaddleOCR CER 0.5845% / WER 3.5135%, with
+no content omissions for either engine. It remains a single-clean-page result
+and therefore cannot select an OCR engine for the manual or a page class.
+
+A next-slice candidate comprising PDF pages 91 through 110 is rendered at 300
+DPI. It covers four recovered source files and includes prose, definition
+lists, Lisp displays, mathematical operators, chapter/section transitions, and
+dense mixed layouts. A reusable locator aligns baseline Tesseract helper text
+to recovered source with 64.7% to 95.5% exact-token coverage and a large
+winner/runner-up margin on every page. These are explicitly approximate,
+review-required mapping proposals and not ground truth. OCR artifacts, renders,
+source files, and proposals are separately digest-bound in ignored work
+storage.
 
 ## Current automated verification
 
 ```text
 uv run pytest -q
-179 passed
+230 passed
 
 uv run ruff check .
 All checks passed
 
 uv run mypy src/lispmdoc
-Success: no issues found in 75 source files
+Success: no issues found in 83 source files
 
 git status --short
-foundation and transcription-workspace commits exist; tracked working tree clean
+tracked working tree clean after the recorded commit
 ```
 
 ## Not yet implemented
 
-- Representative English benchmark corpus. One recovered-source scan pilot is
-  ready for mapping/layout review; additional manuals and page classes still
-  need authoritative-source discovery or manual fallback truth.
+- Representative English benchmark corpus. One recovered-source scan page is
+  authoritative-ready and a 20-page expansion has source-mapping proposals;
+  the expansion still needs exact boundary derivation and independent review.
 - Evidence-backed OCR engine selection by page class.
 - Automatic integration of preprocessing proposals into conversion. The
   foundation supports conservative deskew/border operations and explicit

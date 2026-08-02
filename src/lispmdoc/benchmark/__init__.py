@@ -28,6 +28,7 @@ from .bolio import (
     normalize_bolio_line,
     parse_manual_vars,
 )
+from .bolio_formatting import SemanticTextSpan, semantic_spans
 from .corpus import (
     BENCHMARK_MANIFEST_VERSION,
     BenchmarkCorpus,
@@ -49,6 +50,7 @@ from .report import (
     ground_truth_digest,
 )
 from .review_annotations import apply_review_annotations
+from .source_alignment import RecoveredSourceIndex, SourceLineAlignment, align_ocr_page_to_sources
 from .source_reference import ReferenceArtifact, ReferenceRegion, render_reference_artifact
 from .spatial_evaluation import (
     SpatialEvaluation,
@@ -113,7 +115,9 @@ __all__ = [
     "InspectionCandidate",
     "ProvisionalGates",
     "SelectionResult",
+    "SemanticTextSpan",
     "REQUIRED_COMPOSITION",
+    "RecoveredSourceIndex",
     "WAVE1_VERSION",
     "CoverageDisposition",
     "ExpectedRunIdentity",
@@ -130,6 +134,7 @@ __all__ = [
     "ReferenceRegion",
     "RegionGeometry",
     "SourceSpan",
+    "SourceLineAlignment",
     "SpatialEvaluation",
     "SpatialTextLine",
     "SupportingSourceFile",
@@ -142,6 +147,7 @@ __all__ = [
     "WORKSPACE_VERSION",
     "WorkspaceResult",
     "aggregate_engine_reports",
+    "align_ocr_page_to_sources",
     "apply_review_annotations",
     "candidates_from_inspections",
     "extract_bolio",
@@ -153,6 +159,7 @@ __all__ = [
     "render_reference_artifact",
     "select_stratified_pages",
     "semantic_ocr_text",
+    "semantic_spans",
     "hard_gate",
     "stratified_measurements",
     "validate_60_page_queue",

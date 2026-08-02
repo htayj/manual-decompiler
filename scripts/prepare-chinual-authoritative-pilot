@@ -5,14 +5,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import html
 import json
-import re
 import shutil
 import subprocess
-import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -25,6 +21,7 @@ from lispmdoc.benchmark import (
     QueuePage,
     QueuePageBinding,
     RegionGeometry,
+    SemanticTextSpan,
     SourceSpan,
     SupportingSourceFile,
     TextDerivation,
@@ -32,8 +29,16 @@ from lispmdoc.benchmark import (
     extract_bolio,
     parse_manual_vars,
     render_reference_artifact,
+    semantic_spans,
 )
 from lispmdoc.benchmark.workspace import expected_run_from_dict
+from lispmdoc.typography import (
+    NativeLayoutConfig,
+    NativeRegionLayout,
+    PhysicalTextStyle,
+    compose_native_svg,
+    layout_native_region,
+)
 
 SOURCE_PDF_SHA256 = "123ceb361b0c84864425fc7eee319afc9891a7a68e417f93386f8172334a6e85"
 RENDER_SHA256 = "54cb0a866ecb74d6594ab834b83865221df1feb1cc51fbcfb2c4b5f568f7f502"
@@ -48,34 +53,27 @@ MONO_FONT = "Liberation Mono"
 FOOTER_SOURCE = "MC:LMMAN;FD.SYM 70"
 
 
-@dataclass(frozen=True, slots=True)
-class InlineRun:
-    """An exact source-scoped semantic span, before visual font matching."""
-
-    text: str
-    style: str = "body"
-    evidence: str = "source-default-font-1"
-
-
-@dataclass(frozen=True, slots=True)
-class RegionLayout:
-    svg_inner: str
-    origin: tuple[float, float]
-    font_size: float
-    line_height: float
-    line_count: int
-    generated_bbox: tuple[float, float, float, float]
-    spans: tuple[InlineRun, ...]
-    font_runs: tuple[dict[str, object], ...]
-
-
-# These names preserve the authoring semantics documented by _forma.33.  The
-# physical scan match is deliberately separate: selector 3 currently maps to a
-# regular sans face, not to a guessed CSS "bold" trait.
-_ROLE_BY_SELECTOR = {"1": "body", "2": "font-2-italic", "3": "font-3-inline-lisp"}
 _BASE_FONT_SIZE = {"body": 44.0, "code": 40.0, "function": 46.0, "section": 53.0}
 _LINE_HEIGHT = {"body": 1.20, "code": 1.18, "function": 1.16, "section": 1.14}
 _OPTICAL_LEFT_INSET_FACTOR = 0.13
+
+InlineRun = SemanticTextSpan
+RegionLayout = NativeRegionLayout
+
+_CHINUAL_LAYOUT = NativeLayoutConfig(
+    default_style=PhysicalTextStyle(SERIF_FONT),
+    semantic_styles={
+        "font-2-italic": PhysicalTextStyle(SERIF_FONT, "italic"),
+        "font-3-inline-lisp": PhysicalTextStyle(SANS_FONT),
+        "definition-name": PhysicalTextStyle(MONO_FONT, weight=700),
+        "definition-argument": PhysicalTextStyle(SERIF_FONT, "italic"),
+        "section-title": PhysicalTextStyle(SERIF_FONT, weight=700),
+    },
+    block_styles={"code": PhysicalTextStyle(MONO_FONT)},
+    base_font_sizes=_BASE_FONT_SIZE,
+    line_heights=_LINE_HEIGHT,
+    optical_left_inset_factor=_OPTICAL_LEFT_INSET_FACTOR,
+)
 
 
 class _TextExtractor(HTMLParser):
@@ -115,9 +113,7 @@ def _font_identity(family: str) -> dict[str, str]:
 
 
 def _tool_version(command: Sequence[str]) -> str:
-    return subprocess.run(
-        command, check=True, capture_output=True, text=True
-    ).stdout.strip()
+    return subprocess.run(command, check=True, capture_output=True, text=True).stdout.strip()
 
 
 def _span_records(runs: Sequence[InlineRun]) -> list[dict[str, object]]:
@@ -157,124 +153,7 @@ def _bbox(block: dict[str, object]) -> tuple[int, int, int, int]:
 
 
 def _semantic_type(kind: str) -> str:
-    return {"function": "definition", "section": "section", "body": "prose", "code": "code"}[
-        kind
-    ]
-
-
-def _collapse_editorial_newlines(value: str) -> str:
-    """Turn recovered editor line breaks into reflowable paragraph spacing.
-
-    Bolio physical lines are source-editor convenience, not evidence of where
-    the printed compositor broke a prose line. Code is handled separately.
-    """
-
-    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
-    return " ".join(normalized.split("\n"))
-
-
-def _merge_runs(runs: Sequence[InlineRun]) -> tuple[InlineRun, ...]:
-    merged: list[InlineRun] = []
-    for run in runs:
-        if not run.text:
-            continue
-        if merged and merged[-1].style == run.style:
-            if merged[-1].evidence == run.evidence:
-                merged[-1] = InlineRun(
-                    merged[-1].text + run.text, run.style, run.evidence
-                )
-            else:
-                merged.append(run)
-        else:
-            merged.append(run)
-    return tuple(merged)
-
-
-def _inline_runs_from_bolio(
-    raw_lines: Sequence[str], variables: Mapping[str, str], fallback: str
-) -> tuple[InlineRun, ...]:
-    """Recover the small inline font vocabulary used by this source slice.
-
-    Numbered ``^F`` controls push a selector and ``^F*`` pops it. The selector
-    identity is retained instead of being collapsed into a guessed font trait.
-    Unexpected or unbalanced controls fail closed rather than silently losing
-    formatting evidence.
-    """
-
-    runs: list[InlineRun] = []
-    style = "body"
-    evidence = "source-default-font-1"
-    font_stack: list[tuple[str, str]] = []
-    bold = False
-    for line_number, source_line in enumerate(raw_lines):
-        if line_number:
-            runs.append(InlineRun(" ", style, evidence))
-        index = 0
-        while index < len(source_line):
-            character = source_line[index]
-            if character == "\x06":
-                if index + 1 >= len(source_line):
-                    raise ValueError("truncated Bolio font control")
-                selector = source_line[index + 1]
-                if selector == "*":
-                    if not font_stack:
-                        raise ValueError("Bolio font pop has no matching push")
-                    style, evidence = font_stack.pop()
-                else:
-                    role = _ROLE_BY_SELECTOR.get(selector)
-                    if role is None:
-                        raise ValueError(f"unsupported Bolio font selector {selector!r}")
-                    font_stack.append((style, evidence))
-                    style = role
-                    evidence = f"source-control-font-{selector}"
-                index += 2
-                continue
-            if character == "\x11":
-                if index + 1 >= len(source_line):
-                    raise ValueError("truncated Bolio quoted-character control")
-                runs.append(InlineRun(source_line[index + 1], style, evidence))
-                index += 2
-                continue
-            if (
-                character == "\x16"
-                and index + 1 < len(source_line)
-                and source_line[index + 1] == "("
-            ):
-                closing = source_line.find(")", index + 2)
-                if closing == -1:
-                    raise ValueError("unterminated Bolio variable reference")
-                name = source_line[index + 2 : closing].upper()
-                replacement = variables.get(name)
-                if replacement is None:
-                    raise ValueError(f"undefined Bolio variable {name!r}")
-                runs.append(InlineRun(replacement, style, evidence))
-                index = closing + 1
-                continue
-            if character == "\x19":
-                bold = True
-                index += 1
-                continue
-            if character == "\x18":
-                bold = False
-                index += 1
-                continue
-            if bold:
-                raise ValueError("unresolved Bolio explicit-bold control in pilot source")
-            runs.append(InlineRun(character, style, evidence))
-            index += 1
-    if font_stack:
-        raise ValueError("Bolio font push is not closed by ^F*")
-    rendered = _merge_runs(runs)
-    rendered_text = _collapse_editorial_newlines("".join(run.text for run in rendered))
-    expected_text = _collapse_editorial_newlines(fallback)
-    if rendered_text != expected_text:
-        raise ValueError("Bolio styled spans do not align with canonical source text")
-    # Editorial newlines become one space; literal intra-line spacing remains.
-    normalized: list[InlineRun] = []
-    for run in rendered:
-        text = _collapse_editorial_newlines(run.text)
-        normalized.append(InlineRun(text, run.style, run.evidence))
-    return _merge_runs(normalized)
+    return {"function": "definition", "section": "section", "body": "prose", "code": "code"}[kind]
 
 
 def semantic_runs(
@@ -284,94 +163,17 @@ def semantic_runs(
     raw_lines: Sequence[str],
     variables: Mapping[str, str],
 ) -> tuple[InlineRun, ...]:
-    """Return print-intent runs without promoting source editor newlines."""
-
-    if kind == "function":
-        match = re.fullmatch(r"(\S+)(.*)", reference_text, flags=re.DOTALL)
-        if match is None:
-            raise ValueError("function heading must contain a function name")
-        runs = (InlineRun(match.group(1), "definition-name", "directive-.defun-first-atom"),) + tuple(
-            InlineRun(argument, "definition-argument", "directive-.defun-remaining-atoms")
-            for argument in re.findall(r"\s+\S+", match.group(2), flags=re.DOTALL)
-        )
-    elif kind == "code":
-        # Preserve nested selector evidence (for example ^F2 around `sym`) but
-        # let the structural no-fill environment determine physical appearance.
-        runs = (
-            _inline_runs_from_bolio(raw_lines, variables, reference_text)
-            if raw_lines
-            else (InlineRun(reference_text, "display-code", "directive-.lisp"),)
-        )
-    elif kind == "section":
-        runs = (InlineRun(reference_text, "section-title", "directive-.section"),)
-    else:
-        runs = _inline_runs_from_bolio(raw_lines, variables, reference_text)
-    expected = reference_text if kind == "code" else _collapse_editorial_newlines(reference_text)
-    if "".join(run.text for run in runs) != expected:
-        raise ValueError("semantic runs must concatenate to the source-derived rendered text")
-    return runs
+    return semantic_spans(
+        kind=kind,
+        reference_text=reference_text,
+        raw_lines=raw_lines,
+        variables=variables,
+    )
 
 
 def _physical_style(style: str, kind: str) -> tuple[str, str, int]:
-    # Explicit source selectors override the structural environment. Thus a
-    # ^F2 span inside .lisp is italic even though the surrounding display uses
-    # the fixed-width face.
-    if style in {"font-2-italic", "definition-argument"}:
-        return SERIF_FONT, "italic", 400
-    if kind == "code":
-        return MONO_FONT, "normal", 400
-    if style == "font-3-inline-lisp":
-        return SANS_FONT, "normal", 400
-    if style == "definition-name":
-        return MONO_FONT, "normal", 700
-    if style == "section-title":
-        return SERIF_FONT, "normal", 700
-    return SERIF_FONT, "normal", 400
-
-
-def _pango_markup(kind: str, runs: Sequence[InlineRun]) -> str:
-    parts: list[str] = []
-    for run in runs:
-        family, slant, weight = _physical_style(run.style, kind)
-        parts.append(
-            f'<span font_family="{html.escape(family)}" style="{slant}" '
-            f'weight="{weight}">{html.escape(run.text)}</span>'
-        )
-    return "".join(parts)
-
-
-def _native_layout(
-    *, kind: str, runs: Sequence[InlineRun], width: float, size: float, indent: float
-) -> tuple[str, dict[str, object]]:
-    with tempfile.TemporaryDirectory(prefix="lispmdoc-pango-") as temporary:
-        temporary_path = Path(temporary)
-        source = temporary_path / "region.pango"
-        svg = temporary_path / "region.svg"
-        serialized = temporary_path / "layout.json"
-        source.write_text(_pango_markup(kind, runs), encoding="utf-8")
-        command = [
-            "pango-view",
-            "--no-display",
-            "--pixels",
-            "--markup",
-            "--background=transparent",
-            "--foreground=#17201d",
-            f"--font={SERIF_FONT} {size}",
-            f"--width={round(width)}",
-            "--wrap=word-char",
-            f"--indent={round(indent)}",
-            f"--line-spacing={_LINE_HEIGHT[kind]}",
-            "--margin=0",
-            f"--output={svg}",
-            f"--serialize-to={serialized}",
-            str(source),
-        ]
-        subprocess.run(command, check=True, capture_output=True)
-        svg_text = svg.read_text(encoding="utf-8")
-        root_match = re.search(r"<svg\b[^>]*>(.*)</svg>\s*$", svg_text, flags=re.DOTALL)
-        if root_match is None:
-            raise ValueError("Pango did not emit an SVG document")
-        return root_match.group(1), json.loads(serialized.read_text(encoding="utf-8"))
+    physical = _CHINUAL_LAYOUT.style_for(InlineRun("", style), kind)
+    return physical.family, physical.slant, physical.weight
 
 
 def layout_region(
@@ -381,90 +183,17 @@ def layout_region(
     bbox: tuple[int, int, int, int],
     paragraph_indent: bool,
 ) -> RegionLayout:
-    """Fit semantic runs into scan-derived geometry at readable page scale."""
-
-    x1, y1, x2, y2 = bbox
-    base_size = _BASE_FONT_SIZE[kind]
-    max_height = y2 - y1
-    # A first-line indent is a print-layout property. Source paragraphs after a
-    # section begin at the page margin; definition explanations already have a
-    # scan-measured block indent and therefore do not receive a second one.
-    indent = 100.0 if paragraph_indent else 0.0
-    size = base_size
-    svg_inner: str | None = None
-    shaped: dict[str, object] | None = None
-    for _ in range(24):
-        optical_inset = size * _OPTICAL_LEFT_INSET_FACTOR
-        candidate_svg, candidate = _native_layout(
-            kind=kind,
-            runs=runs,
-            width=x2 - x1 - optical_inset,
-            size=size,
-            indent=indent,
-        )
-        output = candidate["output"]
-        if not isinstance(output, dict):
-            raise ValueError("Pango serialization lacks output metrics")
-        width_fits = kind != "code" or not bool(output["is-wrapped"])
-        line_height = size * _LINE_HEIGHT[kind]
-        logical_height = float(output["height"]) / 1024
-        if width_fits and logical_height <= max_height:
-            svg_inner, shaped = candidate_svg, candidate
-            break
-        if size <= 34.0:
-            raise ValueError("native shaped layout does not fit its scan-derived region")
-        size -= 1.0
-    if svg_inner is None or shaped is None:
-        raise ValueError("could not fit a non-empty semantic run into its review region")
-    line_height = size * _LINE_HEIGHT[kind]
-    origin_x = x1 + size * _OPTICAL_LEFT_INSET_FACTOR
-    origin_y = float(y1)
-    shaped_output = shaped["output"]
-    assert isinstance(shaped_output, dict)
-    used_width = float(shaped_output["width"]) / 1024
-    used_height = float(shaped_output["height"]) / 1024
-    generated = (
-        origin_x,
-        origin_y,
-        origin_x + used_width,
-        origin_y + used_height,
-    )
-    if generated[2] > x2 + 0.01 or generated[3] > y2 + 0.01:
-        raise ValueError("native ink extents exceed the scan-derived region")
-    return RegionLayout(
-        svg_inner,
-        (origin_x, origin_y),
-        size,
-        line_height,
-        len(shaped_output["lines"]),
-        generated,
-        tuple(runs),
-        tuple(
-            run["font"]
-            for line in shaped_output["lines"]
-            for run in line["runs"]
-            if isinstance(run, dict) and isinstance(run.get("font"), dict)
-        ),
+    return layout_native_region(
+        kind=kind,
+        spans=runs,
+        bbox=bbox,
+        first_line_indent=paragraph_indent,
+        config=_CHINUAL_LAYOUT,
     )
 
 
 def _svg(layouts: Sequence[RegionLayout]) -> bytes:
-    content = [
-        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
-        f'width="{PAGE_WIDTH}" height="{PAGE_HEIGHT}" viewBox="0 0 {PAGE_WIDTH} {PAGE_HEIGHT}">',
-        f'<rect width="{PAGE_WIDTH}" height="{PAGE_HEIGHT}" fill="#fffdf8"/>',
-    ]
-    for index, layout in enumerate(layouts):
-        prefix = f"region-{index}-"
-        inner = re.sub(r'id="([^"]+)"', rf'id="{prefix}\1"', layout.svg_inner)
-        inner = re.sub(r'(?:xlink:href|href)="#([^"]+)"', rf'xlink:href="#{prefix}\1"', inner)
-        inner = re.sub(r'url\(#([^)]+)\)', rf'url(#{prefix}\1)', inner)
-        content.append(
-            f'<g transform="translate({layout.origin[0]:.3f} {layout.origin[1]:.3f})">'
-            f"{inner}</g>"
-        )
-    content.append("</svg>")
-    return ("\n".join(content) + "\n").encode("utf-8")
+    return compose_native_svg(layouts, width=PAGE_WIDTH, height=PAGE_HEIGHT, background="#fffdf8")
 
 
 def main() -> int:
@@ -719,9 +448,7 @@ def main() -> int:
             (
                 MappingAnchor("printed-page-number", "88", "88"),
                 MappingAnchor("heading", "The Property List", "The Property List"),
-                MappingAnchor(
-                    "source-footer", FOOTER_SOURCE, FOOTER_SOURCE
-                ),
+                MappingAnchor("source-footer", FOOTER_SOURCE, FOOTER_SOURCE),
             ),
             "human-mapping-review-required",
         ),

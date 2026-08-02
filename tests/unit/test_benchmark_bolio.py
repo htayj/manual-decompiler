@@ -9,6 +9,7 @@ from lispmdoc.benchmark.bolio import (
     normalize_bolio_line,
     parse_manual_vars,
 )
+from lispmdoc.benchmark.bolio_formatting import semantic_spans
 
 VARS = """\
 (DEFPROP LOCATIVE |section 13, page 170| JUST-VALUE)
@@ -125,3 +126,23 @@ def test_normalization_is_deterministic_and_control_q_preserves_quoted_punctuati
 def test_malformed_structure_is_not_treated_as_visible_text() -> None:
     with pytest.raises(BolioSyntaxError, match="inside .lisp"):
         extract_bolio(".lisp\n.section Wrong", VARS)
+
+
+def test_explicit_bold_is_scoped_by_source_controls_not_token_spelling() -> None:
+    spans = semantic_spans(
+        kind="body",
+        reference_text="same same same",
+        raw_lines=("same \x19same\x18 same",),
+        variables={},
+    )
+
+    assert [(span.text, span.bold) for span in spans] == [
+        ("same ", False),
+        ("same", True),
+        (" same", False),
+    ]
+
+
+def test_unbalanced_explicit_bold_fails_closed() -> None:
+    with pytest.raises(BolioSyntaxError, match="not closed"):
+        semantic_spans(kind="body", reference_text="same", raw_lines=("\x19same",), variables={})

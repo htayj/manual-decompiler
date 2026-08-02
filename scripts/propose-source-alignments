@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Propose recovered-source mappings for OCR helper text from rendered pages."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import subprocess
+from pathlib import Path
+
+from lispmdoc.benchmark import RecoveredSourceIndex, parse_manual_vars
+
+_PAGE_NAME = re.compile(r"p(?P<page>[0-9]{6})\.txt")
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_new(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    with path.open("x", encoding="utf-8") as stream:
+        stream.write(payload + "\n")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--render-manifest", type=Path, required=True)
+    parser.add_argument("--ocr-directory", type=Path, required=True)
+    parser.add_argument("--source-directory", type=Path, required=True)
+    parser.add_argument("--manual-vars", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+
+    manifest = json.loads(args.render_manifest.read_text(encoding="utf-8"))
+    rendered_pages = {int(page["page_number"]): page for page in manifest["pages"]}
+    variables = parse_manual_vars(args.manual_vars.read_text(encoding="latin-1"))
+    source_paths = tuple(
+        path
+        for path in sorted(args.source_directory.iterdir())
+        if path.is_file() and path != args.manual_vars and not path.name.startswith("_")
+    )
+    sources = {path.name: path.read_text(encoding="latin-1") for path in source_paths}
+    index = RecoveredSourceIndex(sources, variables)
+    alignments: list[dict[str, object]] = []
+    for ocr_path in sorted(args.ocr_directory.glob("p??????.txt")):
+        match = _PAGE_NAME.fullmatch(ocr_path.name)
+        assert match is not None
+        page_number = int(match.group("page"))
+        rendered = rendered_pages.get(page_number)
+        if rendered is None:
+            raise ValueError(f"OCR page {page_number} is absent from the render manifest")
+        alignment = index.align(ocr_path.read_text(encoding="utf-8"))
+        source_path = args.source_directory / alignment.source_path
+        alignments.append(
+            {
+                "alignment": alignment.to_dict(),
+                "ocr_artifact": {
+                    "path": ocr_path.as_posix(),
+                    "sha256": _sha256(ocr_path),
+                },
+                "page_number": page_number,
+                "render_sha256": rendered["image"]["sha256"],
+                "source_sha256": _sha256(source_path),
+            }
+        )
+    if not alignments:
+        raise ValueError("OCR directory contains no pNNNNNN.txt artifacts")
+    _write_new(
+        args.output,
+        {
+            "alignments": alignments,
+            "format_version": "lispmdoc-source-alignment-proposals-1",
+            "ground_truth_status": "not-ground-truth",
+            "manual_vars_sha256": _sha256(args.manual_vars),
+            "ocr_engine": {
+                "name": "tesseract",
+                "version": subprocess.run(
+                    ["tesseract", "--version"], check=True, capture_output=True, text=True
+                ).stdout.splitlines()[0],
+            },
+            "render_manifest_sha256": _sha256(args.render_manifest),
+            "source_pdf_sha256": manifest["source"]["sha256"],
+        },
+    )
+    print(args.output.resolve())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
