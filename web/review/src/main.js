@@ -120,7 +120,8 @@ function render() {
             <label>Recovered source<textarea readonly>${escapeHtml(selectedText("source"))}</textarea></label>
             <label>OCR evidence<textarea readonly>${escapeHtml(selectedText("ocr"))}</textarea></label>
             <label class="canonical">Corrected canonical text<textarea id="canonical-text" placeholder="Leave unchanged when the canonical text is correct">${escapeHtml(selectedAnnotation?.canonical_text ?? selected.canonical_text ?? "")}</textarea></label>
-          </div>` : `<p class="muted">Choose a region to make a text correction. Page dispositions and notes can still be recorded here.</p>`}
+          </div>` : `<p class="muted">Choose a region to make a text correction. Page dispositions and notes can still be recorded here.</p>
+          <button data-action="accept-undecided">Accept all undecided regions on this page</button>`}
           <label>Review notes<textarea id="notes" placeholder="What should the pipeline preserve or fix?">${escapeHtml(selectedAnnotation?.notes ?? currentAnnotation.notes ?? "")}</textarea></label>
         </section>
       </section>
@@ -150,12 +151,30 @@ function selectRegion(index) {
   render();
 }
 
+function acceptUndecidedRegions() {
+  editAnnotation();
+  const currentPage = page();
+  const annotation = pageAnnotation(currentPage.id);
+  if (!window.confirm("Accept every currently undecided region on this page? Existing decisions will be preserved.")) return;
+  annotation.disposition ??= "accept";
+  for (const item of currentPage.regions ?? []) {
+    const target = (annotation.regions[item.id] ??= {});
+    if (!target.disposition) {
+      target.disposition = "accept";
+      target.canonical_text = item.canonical_text;
+    }
+  }
+  state.message = { kind: "success", text: "Undecided regions marked accept. Save annotations to persist the decisions." };
+  render();
+}
+
 function bindEvents() {
   root.querySelectorAll("[data-page]").forEach((element) => element.addEventListener("click", () => selectPage(Number(element.dataset.page))));
   root.querySelectorAll("[data-region]").forEach((element) => element.addEventListener("click", () => selectRegion(Number(element.dataset.region))));
   root.querySelector("[data-action='previous']")?.addEventListener("click", () => selectPage(state.pageIndex - 1));
   root.querySelector("[data-action='next']")?.addEventListener("click", () => selectPage(state.pageIndex + 1));
   root.querySelector("[data-action='save']")?.addEventListener("click", save);
+  root.querySelector("[data-action='accept-undecided']")?.addEventListener("click", acceptUndecidedRegions);
   root.querySelector("#reviewer").addEventListener("input", (event) => { state.reviewer = event.target.value; });
 }
 

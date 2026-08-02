@@ -45,6 +45,7 @@ PAGE_HEIGHT = 3300
 SERIF_FONT = "Liberation Serif"
 SANS_FONT = "Liberation Sans"
 MONO_FONT = "Liberation Mono"
+FOOTER_SOURCE = "MC:LMMAN;FD.SYM 70"
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,7 +471,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument(
-        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review-r10")
+        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review-r11")
     )
     args = parser.parse_args()
     root = args.project_root.resolve()
@@ -673,7 +674,7 @@ def main() -> int:
         ("running-header-section", "The Property List", _bbox(blocks[0])),
         ("running-header-page", "88", _bbox(blocks[1])),
         ("running-header-title", "Lisp Machine Manual", _bbox(blocks[2])),
-        ("running-footer-source", "MCL:LMMAN;FD.SYM 70", _bbox(blocks[18])),
+        ("running-footer-source", FOOTER_SOURCE, _bbox(blocks[18])),
         ("running-footer-date", "24-JUL-81", _bbox(blocks[19])),
     )
     furniture_records: list[dict[str, object]] = []
@@ -719,7 +720,7 @@ def main() -> int:
                 MappingAnchor("printed-page-number", "88", "88"),
                 MappingAnchor("heading", "The Property List", "The Property List"),
                 MappingAnchor(
-                    "source-footer", "MCL:LMMAN;FD.SYM 70", "MCL:LMMAN;FD.SYM 70"
+                    "source-footer", FOOTER_SOURCE, FOOTER_SOURCE
                 ),
             ),
             "human-mapping-review-required",
@@ -767,7 +768,7 @@ def main() -> int:
         "review_instructions": {
             "page": (
                 "Accept only if the scan is printed page 88 and its footer identifies "
-                "MCL:LMMAN;FD.SYM 70, and if the three running headers and two footer "
+                f"{FOOTER_SOURCE}, and if the three running headers and two footer "
                 "items are all present in the replica. This confirms mapping and running matter."
             ),
             "region": (
@@ -782,9 +783,9 @@ def main() -> int:
     }
     _write_new(output / "review-project.json", _json_bytes(review_project))
     prior_annotations = (
-        root / "work/benchmark-pilot/authoritative-review-r9/review-project.annotations.json"
+        root / "work/benchmark-pilot/authoritative-review-r10/review-project.annotations.json"
     )
-    prior_project = root / "work/benchmark-pilot/authoritative-review-r9/review-project.json"
+    prior_project = root / "work/benchmark-pilot/authoritative-review-r10/review-project.json"
     if prior_annotations.is_file() and prior_project.is_file():
         _write_new(
             output / "prior-review-feedback.json",
@@ -792,7 +793,7 @@ def main() -> int:
                 {
                     "annotations": json.loads(prior_annotations.read_text(encoding="utf-8")),
                     "prior_review_project_sha256": _sha256(prior_project),
-                    "prior_review_revision": "r9",
+                    "prior_review_revision": "r10",
                     "status": "retained-separately; do-not-apply-to-new-revision",
                 }
             ),

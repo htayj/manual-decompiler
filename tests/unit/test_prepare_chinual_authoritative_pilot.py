@@ -216,6 +216,12 @@ def test_malformed_or_unknown_font_controls_fail_closed() -> None:
         )
 
 
+def test_footer_source_identifier_uses_human_verified_scan_reading() -> None:
+    pilot = _pilot_module()
+
+    assert pilot.FOOTER_SOURCE == "MC:LMMAN;FD.SYM 70"
+
+
 def test_r6_body_scale_fills_long_region_with_tighter_leading_and_section_is_taller() -> None:
     pilot = _pilot_module()
     long_runs = (
