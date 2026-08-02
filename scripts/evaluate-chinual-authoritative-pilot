@@ -89,13 +89,26 @@ def _engine_report(
     }
 
 
+def _selection_status(review_disposition: str) -> tuple[str, str]:
+    if review_disposition == "authoritative-ready":
+        return (
+            "provisional-single-page-only",
+            "human-reviewed pilot ground truth is authoritative-ready, but one page is "
+            "insufficient to select a corpus-wide OCR default",
+        )
+    return (
+        "provisional-text-only",
+        "page mapping is accepted, but reviewed typography/layout discrepancies remain",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument(
         "--review-dir",
         type=Path,
-        default=Path("work/benchmark-pilot/authoritative-review-r5"),
+        default=Path("work/benchmark-pilot/authoritative-review-r11"),
     )
     parser.add_argument(
         "--output",
@@ -124,6 +137,8 @@ def main() -> int:
 
     surya_value = json.loads(paths["surya"].read_text(encoding="utf-8"))
     paddle_value = json.loads(paths["paddleocr"].read_text(encoding="utf-8"))
+    review_disposition = package.status().disposition
+    selection_disposition, selection_reason = _selection_status(review_disposition)
     report = {
         "engines": {
             "paddleocr": {
@@ -140,15 +155,13 @@ def main() -> int:
             "annotations_sha256": _sha256(annotations_path),
             "package_sha256": _sha256(package_path),
             "page_id": package.queue_page.id,
-            "review_disposition": package.status().disposition,
+            "review_disposition": review_disposition,
             "text_profile": (
                 "collapse Unicode whitespace for prose/definitions/headings; preserve code"
             ),
         },
-        "selection_disposition": "provisional-text-only",
-        "selection_reason": (
-            "page mapping is accepted, but reviewed typography/layout discrepancies remain"
-        ),
+        "selection_disposition": selection_disposition,
+        "selection_reason": selection_reason,
     }
     output = args.output or review / "ocr-quality.json"
     if not output.is_absolute():
