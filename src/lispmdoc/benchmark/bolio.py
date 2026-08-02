@@ -77,7 +77,7 @@ _SUPPORTED_DIRECTIVES = frozenset(
     }
 )
 _LINE_BREAK_POLICIES = frozenset({"structural", "reflow-editorial", "preserve"})
-_VISIBLE_SAIL_CHARACTERS = {"\x1c": "≤", "\x1d": "≥"}
+_VISIBLE_SAIL_CHARACTERS = {"\x1a": "≠", "\x1c": "≤", "\x1d": "≥"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,6 +322,59 @@ def normalize_bolio_line(
     return normalized, tuple(issues)
 
 
+def render_bolio_interval(
+    extraction: BolioExtraction,
+    source_text: str,
+    *,
+    start_line: int,
+    end_line: int,
+) -> str:
+    """Render exact source-derived text intersecting an inclusive line interval.
+
+    The extraction supplies semantic boundaries while the original source
+    supplies partial-block text. OCR output is never consulted.
+    """
+
+    physical_lines = _physical_lines(source_text)
+    if start_line < 1 or end_line < start_line or end_line > len(physical_lines):
+        raise BolioError("Bolio render interval exceeds source text")
+    parts: list[str] = []
+    issues: list[BolioIssue] = []
+    for block in extraction.blocks:
+        overlap_start = max(start_line, block.span.start_line)
+        overlap_end = min(end_line, block.span.end_line)
+        if overlap_end < overlap_start:
+            continue
+        if overlap_start == block.span.start_line and overlap_end == block.span.end_line:
+            text = (
+                f"{block.section_number} {block.text}"
+                if block.kind == "section" and block.section_number
+                else block.text
+            )
+        elif block.kind in {"function", "section", "list-item"}:
+            text = block.text
+        else:
+            visible_lines: list[str] = []
+            for line_number in range(overlap_start, overlap_end + 1):
+                raw_line = physical_lines[line_number - 1]
+                directive = _DIRECTIVE.fullmatch(raw_line)
+                if directive and directive.group("name").lower() == "exdent":
+                    raw_line = re.sub(r"^[0-9]+(?:\s+|$)", "", directive.group("argument") or "")
+                elif directive:
+                    continue
+                visible = _normalize_visible_line(
+                    raw_line, extraction.variables, line_number, issues
+                ).strip(" \t")
+                if visible:
+                    visible_lines.append(visible)
+            text = ("\n" if block.kind == "code" else " ").join(visible_lines)
+        if text:
+            parts.append(text)
+    if issues:
+        raise BolioError("Bolio render interval contains unresolved controls")
+    return "\n\n".join(parts)
+
+
 def _parse_section_title(argument: str, line: int) -> str:
     title = argument.strip()
     if len(title) >= 2 and title[0] == title[-1] == '"':
@@ -435,6 +488,8 @@ def extract_bolio(
 
     for line_number in range(start_line, final_line + 1):
         raw_line = all_lines[line_number - 1]
+        if raw_line.lower().startswith("'cindex"):
+            continue
         directive = _DIRECTIVE.fullmatch(raw_line)
         if directive is None:
             emit_pending_section()
@@ -582,4 +637,5 @@ __all__ = [
     "extract_bolio",
     "normalize_bolio_line",
     "parse_manual_vars",
+    "render_bolio_interval",
 ]

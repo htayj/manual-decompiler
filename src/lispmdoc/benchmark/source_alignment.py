@@ -120,6 +120,8 @@ def _visible_source_tokens(text: str, variables: Mapping[str, str]) -> tuple[tup
         physical_lines.pop()
     for line_number, raw_value in enumerate(physical_lines, start=1):
         raw_line = raw_value[:-1] if raw_value.endswith("\r") else raw_value
+        if raw_line.lower().startswith("'cindex"):
+            continue
         directive = _VISIBLE_DIRECTIVE.fullmatch(raw_line)
         if directive:
             visible = directive.group("text")

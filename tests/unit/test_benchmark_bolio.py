@@ -8,6 +8,7 @@ from lispmdoc.benchmark.bolio import (
     extract_bolio,
     normalize_bolio_line,
     parse_manual_vars,
+    render_bolio_interval,
 )
 from lispmdoc.benchmark.bolio_formatting import semantic_spans
 
@@ -179,3 +180,53 @@ Returns \x19t\x18 when x \x1d y.
         ("code", "(≥ x y)"),
     ]
     assert not extraction.issues
+
+
+def test_partial_interval_is_rendered_from_source_not_neighboring_blocks() -> None:
+    source = """\
+First physical source line
+continues here.
+
+Second paragraph must be excluded.
+"""
+    extraction = extract_bolio(source, VARS)
+
+    rendered = render_bolio_interval(extraction, source, start_line=1, end_line=2)
+
+    assert rendered == "First physical source line continues here."
+
+
+def test_multiline_code_formatting_spans_preserve_literal_newlines() -> None:
+    spans = semantic_spans(
+        kind="code",
+        reference_text="(first)\n  (second sym)",
+        raw_lines=("(first)", "  (second \x062sym\x06*)"),
+        variables={},
+    )
+
+    assert "".join(span.text for span in spans) == "(first)\n  (second sym)"
+    assert next(span for span in spans if span.text == "sym").style == "font-2-italic"
+
+
+def test_apostrophe_cindex_command_is_nonprinting_metadata() -> None:
+    extraction = extract_bolio(".section Sorting\n'cindex sorting\nVisible prose.\n", VARS)
+
+    assert [(block.kind, block.text) for block in extraction.blocks] == [
+        ("section", "Sorting"),
+        ("body", "Visible prose."),
+    ]
+
+
+def test_quoted_sail_not_equal_character_is_preserved_semantically() -> None:
+    source = "x \x11\x1a 0\n"
+
+    extraction = extract_bolio(source, VARS)
+    spans = semantic_spans(
+        kind="body",
+        reference_text=extraction.blocks[0].text,
+        raw_lines=(source.rstrip("\n"),),
+        variables={},
+    )
+
+    assert extraction.blocks[0].text == "x ≠ 0"
+    assert "".join(span.text for span in spans) == "x ≠ 0"

@@ -27,6 +27,7 @@ from .bolio import (
     extract_bolio,
     normalize_bolio_line,
     parse_manual_vars,
+    render_bolio_interval,
 )
 from .bolio_formatting import SemanticTextSpan, semantic_spans
 from .corpus import (
@@ -167,6 +168,7 @@ __all__ = [
     "normalize_bolio_line",
     "parse_manual_vars",
     "render_reference_artifact",
+    "render_bolio_interval",
     "select_stratified_pages",
     "semantic_ocr_text",
     "semantic_spans",

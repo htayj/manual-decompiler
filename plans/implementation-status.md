@@ -247,17 +247,30 @@ mapping review covers pages 96, 97, and 106 through 110. Page 110 now spans
 `fd_num.77` lines 398 through 444, includes `add1`, and excludes the following
 Transcendental Functions section.
 
+Human review accepted every corrected page and region in that focused review.
+The accepted mapping now drives a deterministic 20-page source-derived replica
+draft with 269 regions. Canonical region text comes from cited Bolio intervals;
+OCR is used only to locate source fragments. Chapter and section counters,
+special-form labels, formatting selectors, compact definition sequences, table
+rows, literal code newlines, and SAIL comparison characters are derived from
+source/typesetter semantics. Running matter remains explicitly scan-derived.
+Two independent builds produced byte-identical review projects, SHA-256
+`580a4f95356e667aabc34a793966ae80790a8e1af69907dc37249cdc75004a46`.
+The source, variables, proposal, layout, PDF, font, scan, replica, and region
+text digests are retained in the ignored replica manifest. This is now ready
+for independent layout review; it is not replacement-ready.
+
 ## Current automated verification
 
 ```text
 uv run pytest -q
-233 passed
+237 passed
 
 uv run ruff check .
 All checks passed
 
 uv run mypy src/lispmdoc
-Success: no issues found in 83 source files
+Success: no issues found in 84 source files
 
 git status --short
 tracked working tree clean after the recorded commit
@@ -266,16 +279,19 @@ tracked working tree clean after the recorded commit
 ## Not yet implemented
 
 - Representative English benchmark corpus. One recovered-source scan page is
-  authoritative-ready and a 20-page expansion has source-mapping proposals;
-  the expansion still needs exact boundary derivation and independent review.
+  authoritative-ready and a 20-page expansion has accepted source mapping and
+  a replica draft; the expansion still needs independent layout review and
+  scored evaluation.
 - Evidence-backed OCR engine selection by page class.
 - Automatic integration of preprocessing proposals into conversion. The
   foundation supports conservative deskew/border operations and explicit
   review/no-op dispositions; dewarp and uncertain transformations remain
   review-gated.
 - Pilot integration of multi-engine reconciliation and review queues.
-- Pilot integration of paragraph/list/table/code/math reconstruction.
-- Pilot typography/font decisions and legal distribution clearance.
+- General integration of paragraph/list/table/code/math reconstruction beyond
+  the source-backed Chinual slice.
+- General typography/font decisions and legal distribution clearance beyond
+  the measured Chinual profile.
 - Pilot PDF-vector and scanned-line-art extraction against representative PDFs.
 - Schematic connectivity validation and raster byte/error decisions on pilots.
 - Evidence-backed visual comparison and accessibility runs with pinned renderers.
@@ -285,6 +301,6 @@ tracked working tree clean after the recorded commit
   clean-environment reproducibility checks.
 - Replacement-ready conformance.
 
-The next implementation milestone is the English benchmark plus a reviewed
-prose-scan slice. A corpus-wide OCR run should not happen before that benchmark
-exists.
+The next implementation milestone is independent review and measured
+evaluation of the 20-page source-backed replica slice. A corpus-wide OCR run
+should not happen before a representative English benchmark exists.

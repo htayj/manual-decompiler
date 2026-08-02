@@ -16,6 +16,13 @@ from .native import (
     compose_native_svg,
     layout_native_region,
 )
+from .profiles import (
+    CHINUAL_4E_LAYOUT,
+    CHINUAL_MONO_FONT,
+    CHINUAL_SANS_FONT,
+    CHINUAL_SERIF_FONT,
+    chinual_physical_style,
+)
 from .types import (
     FontResource,
     FontSubsetPlan,
@@ -27,6 +34,10 @@ from .types import (
 
 __all__ = [
     "FontResource",
+    "CHINUAL_4E_LAYOUT",
+    "CHINUAL_MONO_FONT",
+    "CHINUAL_SANS_FONT",
+    "CHINUAL_SERIF_FONT",
     "FontSubsetPlan",
     "PdfFontInventory",
     "PhysicalTextStyle",
@@ -38,6 +49,7 @@ __all__ = [
     "NativeRegionLayout",
     "UnresolvedGlyph",
     "choose_substitute",
+    "chinual_physical_style",
     "compose_native_svg",
     "distributable_font",
     "distributable_subset",

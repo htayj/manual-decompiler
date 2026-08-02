@@ -33,9 +33,12 @@ from lispmdoc.benchmark import (
 )
 from lispmdoc.benchmark.workspace import expected_run_from_dict
 from lispmdoc.typography import (
-    NativeLayoutConfig,
+    CHINUAL_4E_LAYOUT,
+    CHINUAL_MONO_FONT,
+    CHINUAL_SANS_FONT,
+    CHINUAL_SERIF_FONT,
     NativeRegionLayout,
-    PhysicalTextStyle,
+    chinual_physical_style,
     compose_native_svg,
     layout_native_region,
 )
@@ -47,33 +50,14 @@ SOURCE_SHA256 = "36352edeacc7213bbcf9037e4cadad7c068066b352d130450f2e7986b1a4216
 VARS_SHA256 = "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba"
 PAGE_WIDTH = 2550
 PAGE_HEIGHT = 3300
-SERIF_FONT = "Liberation Serif"
-SANS_FONT = "Liberation Sans"
-MONO_FONT = "Liberation Mono"
+SERIF_FONT = CHINUAL_SERIF_FONT
+SANS_FONT = CHINUAL_SANS_FONT
+MONO_FONT = CHINUAL_MONO_FONT
 FOOTER_SOURCE = "MC:LMMAN;FD.SYM 70"
 
 
-_BASE_FONT_SIZE = {"body": 44.0, "code": 40.0, "function": 46.0, "section": 53.0}
-_LINE_HEIGHT = {"body": 1.20, "code": 1.18, "function": 1.16, "section": 1.14}
-_OPTICAL_LEFT_INSET_FACTOR = 0.13
-
 InlineRun = SemanticTextSpan
 RegionLayout = NativeRegionLayout
-
-_CHINUAL_LAYOUT = NativeLayoutConfig(
-    default_style=PhysicalTextStyle(SERIF_FONT),
-    semantic_styles={
-        "font-2-italic": PhysicalTextStyle(SERIF_FONT, "italic"),
-        "font-3-inline-lisp": PhysicalTextStyle(SANS_FONT),
-        "definition-name": PhysicalTextStyle(MONO_FONT, weight=700),
-        "definition-argument": PhysicalTextStyle(SERIF_FONT, "italic"),
-        "section-title": PhysicalTextStyle(SERIF_FONT, weight=700),
-    },
-    block_styles={"code": PhysicalTextStyle(MONO_FONT)},
-    base_font_sizes=_BASE_FONT_SIZE,
-    line_heights=_LINE_HEIGHT,
-    optical_left_inset_factor=_OPTICAL_LEFT_INSET_FACTOR,
-)
 
 
 class _TextExtractor(HTMLParser):
@@ -172,8 +156,7 @@ def semantic_runs(
 
 
 def _physical_style(style: str, kind: str) -> tuple[str, str, int]:
-    physical = _CHINUAL_LAYOUT.style_for(InlineRun("", style), kind)
-    return physical.family, physical.slant, physical.weight
+    return chinual_physical_style(style, kind)
 
 
 def layout_region(
@@ -188,7 +171,7 @@ def layout_region(
         spans=runs,
         bbox=bbox,
         first_line_indent=paragraph_indent,
-        config=_CHINUAL_LAYOUT,
+        config=CHINUAL_4E_LAYOUT,
     )
 
 

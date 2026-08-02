@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from .bolio import BolioSyntaxError
 
 _ROLE_BY_SELECTOR = {"1": "body", "2": "font-2-italic", "3": "font-3-inline-lisp"}
-_VISIBLE_SAIL_CHARACTERS = {"\x1c": "≤", "\x1d": "≥"}
+_VISIBLE_SAIL_CHARACTERS = {"\x1a": "≠", "\x1c": "≤", "\x1d": "≥"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +53,11 @@ def _merge_spans(spans: Sequence[SemanticTextSpan]) -> tuple[SemanticTextSpan, .
 
 
 def _inline_spans(
-    raw_lines: Sequence[str], variables: Mapping[str, str], fallback: str
+    raw_lines: Sequence[str],
+    variables: Mapping[str, str],
+    fallback: str,
+    *,
+    line_separator: str,
 ) -> tuple[SemanticTextSpan, ...]:
     spans: list[SemanticTextSpan] = []
     style = "body"
@@ -62,7 +66,7 @@ def _inline_spans(
     bold = False
     for line_number, source_line in enumerate(raw_lines):
         if line_number:
-            spans.append(SemanticTextSpan(" ", style, evidence, bold))
+            spans.append(SemanticTextSpan(line_separator, style, evidence, bold))
         index = 0
         while index < len(source_line):
             character = source_line[index]
@@ -137,12 +141,21 @@ def _inline_spans(
         raise BolioSyntaxError("Bolio explicit-bold span is not closed by ^X")
 
     merged = _merge_spans(spans)
-    rendered_text = _collapse_editorial_newlines("".join(span.text for span in merged))
-    if rendered_text != _collapse_editorial_newlines(fallback):
+    rendered_text = "".join(span.text for span in merged)
+    comparable_rendered = (
+        rendered_text if line_separator == "\n" else _collapse_editorial_newlines(rendered_text)
+    )
+    comparable_fallback = (
+        fallback if line_separator == "\n" else _collapse_editorial_newlines(fallback)
+    )
+    if comparable_rendered != comparable_fallback:
         raise BolioSyntaxError("Bolio formatting spans do not align with canonical source text")
     normalized = (
         SemanticTextSpan(
-            _collapse_editorial_newlines(span.text), span.style, span.evidence, span.bold
+            span.text if line_separator == "\n" else _collapse_editorial_newlines(span.text),
+            span.style,
+            span.evidence,
+            span.bold,
         )
         for span in merged
     )
@@ -170,14 +183,14 @@ def semantic_spans(
         )
     elif kind == "code":
         spans = (
-            _inline_spans(raw_lines, variables, reference_text)
+            _inline_spans(raw_lines, variables, reference_text, line_separator="\n")
             if raw_lines
             else (SemanticTextSpan(reference_text, "display-code", "directive-.lisp"),)
         )
     elif kind == "section":
         spans = (SemanticTextSpan(reference_text, "section-title", "directive-.section"),)
     elif kind == "body":
-        spans = _inline_spans(raw_lines, variables, reference_text)
+        spans = _inline_spans(raw_lines, variables, reference_text, line_separator=" ")
     else:
         raise BolioSyntaxError(f"unsupported semantic block kind {kind!r}")
 

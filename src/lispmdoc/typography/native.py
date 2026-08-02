@@ -37,6 +37,7 @@ class NativeLayoutConfig:
     foreground: str = "#17201d"
     optical_left_inset_factor: float = 0.13
     paragraph_indent: float = 100.0
+    minimum_font_size: float = 34.0
 
     def style_for(self, span: SemanticTextSpan, kind: str) -> PhysicalTextStyle:
         style = self.semantic_styles.get(span.style)
@@ -155,7 +156,7 @@ def layout_native_region(
         if width_fits and logical_height <= y2 - y1:
             svg_inner, shaped = candidate_svg, candidate
             break
-        if size <= 34.0:
+        if size <= config.minimum_font_size:
             raise ValueError("native shaped layout does not fit its scan-derived region")
         size -= 1.0
     if svg_inner is None or shaped is None:
@@ -169,8 +170,13 @@ def layout_native_region(
         origin[0] + float(output["width"]) / 1024,
         origin[1] + float(output["height"]) / 1024,
     )
-    if generated[2] > x2 + 0.01 or generated[3] > y2 + 0.01:
-        raise ValueError("native ink extents exceed the scan-derived region")
+    # Pango's integer-pixel width option can round the usable width by less
+    # than half a pixel after the optical inset has been applied.
+    if generated[2] > x2 + 0.5 or generated[3] > y2 + 0.5:
+        raise ValueError(
+            "native ink extents exceed the scan-derived region: "
+            f"generated={generated!r}, region={bbox!r}"
+        )
     lines = output.get("lines")
     if not isinstance(lines, list):
         raise ValueError("Pango serialization lacks line records")

@@ -1,0 +1,571 @@
+#!/usr/bin/env python3
+"""Generate source-derived vector replica drafts for the accepted Chinual slice."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import shutil
+import subprocess
+from dataclasses import replace
+from html.parser import HTMLParser
+from pathlib import Path
+
+from lispmdoc.benchmark import (
+    BolioBlock,
+    BolioExtraction,
+    SemanticTextSpan,
+    extract_bolio,
+    render_bolio_interval,
+    semantic_spans,
+)
+from lispmdoc.typography import (
+    CHINUAL_4E_LAYOUT,
+    CHINUAL_MONO_FONT,
+    CHINUAL_SANS_FONT,
+    CHINUAL_SERIF_FONT,
+    NativeRegionLayout,
+    compose_native_svg,
+    layout_native_region,
+)
+
+PAGE_WIDTH = 2550
+PAGE_HEIGHT = 3300
+_TOKEN = re.compile(r"[a-z0-9]+|>=|<=|//|\\\\|[+*/=<>^-]")
+_CHAPTER_STRUCTURE = {
+    "fd_con.141": (5, 0),
+    "resour.15": (5, 10),
+    "fd_sym.70": (6, 0),
+    "fd_num.77": (7, 0),
+}
+
+
+class _TextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+
+def _html_text(value: str) -> str:
+    parser = _TextExtractor()
+    parser.feed(value)
+    return " ".join("".join(parser.parts).split())
+
+
+def _tokens(value: str) -> tuple[str, ...]:
+    normalized = value.lower().replace("≥", ">=").replace("≤", "<=")
+    return tuple(_TOKEN.findall(normalized))
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_new(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as stream:
+        stream.write(payload)
+
+
+def _font_identity(family: str) -> dict[str, str]:
+    resolved = subprocess.run(
+        ["fc-match", "-f", "%{file}\n", family],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    if not resolved:
+        raise ValueError(f"Fontconfig did not resolve required family {family!r}")
+    path = Path(resolved[0])
+    return {"family": family, "sha256": _sha256(path)}
+
+
+def _json_bytes(value: object) -> bytes:
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+
+
+def _printed_text(block: BolioBlock) -> str:
+    if block.kind == "section" and block.section_number:
+        return f"{block.section_number} {block.text}"
+    return block.text
+
+
+def _raw_block_lines(block: BolioBlock, physical_lines: tuple[str, ...]) -> tuple[str, ...]:
+    lines: list[str] = []
+    for raw_line in physical_lines[block.span.start_line - 1 : block.span.end_line]:
+        directive = re.fullmatch(r"\.exdent(?:[ \t]+(.*))?", raw_line, flags=re.IGNORECASE)
+        if directive:
+            lines.append(re.sub(r"^[0-9]+(?:\s+|$)", "", directive.group(1) or ""))
+        elif raw_line.startswith("."):
+            continue
+        else:
+            lines.append(raw_line if block.kind == "code" else raw_line.strip(" \t"))
+    return tuple(lines)
+
+
+def _block_spans(
+    block: BolioBlock, physical_lines: tuple[str, ...], variables: dict[str, str]
+) -> tuple[SemanticTextSpan, ...]:
+    text = _printed_text(block)
+    if block.kind == "list-item":
+        return (SemanticTextSpan(text, "list-item-label", "directive-table-item"),)
+    kind = block.kind
+    raw_lines = _raw_block_lines(block, physical_lines) if kind in {"body", "code"} else ()
+    return semantic_spans(
+        kind=kind,
+        reference_text=text,
+        raw_lines=raw_lines,
+        variables=variables,
+    )
+
+
+def _structural_prefix(
+    source_path: str,
+    block: BolioBlock,
+    extraction: BolioExtraction,
+    physical_lines: tuple[str, ...],
+) -> str | None:
+    structure = _CHAPTER_STRUCTURE.get(source_path)
+    if structure is None or block.kind != "section" or block.section_number is not None:
+        return None
+    raw = physical_lines[block.span.start_line - 1].lstrip().lower()
+    chapter_number, section_offset = structure
+    if raw.startswith(".chapter"):
+        return str(chapter_number)
+    if not raw.startswith(".section"):
+        return None
+    section_index = sum(
+        1
+        for candidate in extraction.blocks
+        if candidate.kind == "section"
+        and candidate.span.start_line <= block.span.start_line
+        and physical_lines[candidate.span.start_line - 1].lstrip().lower().startswith(".section")
+    )
+    return f"{chapter_number}.{section_offset + section_index}"
+
+
+def _select_source_slice(
+    canonical: str,
+    spans: tuple[SemanticTextSpan, ...],
+    region_locator: str,
+) -> tuple[str, tuple[SemanticTextSpan, ...]]:
+    """Select an OCR-located fragment while retaining only source characters."""
+
+    if _tokens(region_locator) == _tokens(canonical):
+        return canonical, spans
+    pattern = r"\s+".join(re.escape(part) for part in region_locator.split())
+    match = re.search(pattern, canonical, flags=re.IGNORECASE)
+    if match is None:
+        return canonical, spans
+    selected = canonical[match.start() : match.end()]
+    clipped: list[SemanticTextSpan] = []
+    offset = 0
+    for span in spans:
+        span_end = offset + len(span.text)
+        overlap_start = max(offset, match.start())
+        overlap_end = min(span_end, match.end())
+        if overlap_start < overlap_end:
+            clipped.append(
+                SemanticTextSpan(
+                    span.text[overlap_start - offset : overlap_end - offset],
+                    span.style,
+                    span.evidence,
+                    span.bold,
+                )
+            )
+        offset = span_end
+    return selected, tuple(clipped)
+
+
+def _region_source(
+    source_path: str,
+    extraction: BolioExtraction,
+    source_text: str,
+    start: int,
+    end: int,
+    region_locator: str,
+) -> tuple[str, tuple[SemanticTextSpan, ...], str, bool]:
+    canonical = render_bolio_interval(extraction, source_text, start_line=start, end_line=end)
+    blocks = tuple(
+        block
+        for block in extraction.blocks
+        if block.span.end_line >= start and block.span.start_line <= end
+    )
+    if not canonical or not blocks:
+        raise ValueError(f"source interval {start}-{end} has no canonical content")
+    physical_lines = tuple(source_text.split("\n"))
+    if region_locator.casefold() == "special form" and any(
+        physical_lines[block.span.start_line - 1].lstrip().lower().startswith(".defspec")
+        for block in blocks
+    ):
+        return (
+            "Special Form",
+            (SemanticTextSpan("Special Form", "definition-label", "directive-.defspec-label"),),
+            "body",
+            False,
+        )
+    spans: list[SemanticTextSpan] = []
+    complete = all(
+        start <= block.span.start_line and block.span.end_line <= end for block in blocks
+    )
+    table_sequence = len(blocks) > 1 and any(block.kind == "list-item" for block in blocks)
+    compact_sequence = len(blocks) > 1 and any(
+        block.kind in {"function", "code"} for block in blocks
+    )
+    if complete:
+        previous_block: BolioBlock | None = None
+        for block in blocks:
+            if spans:
+                separator = (
+                    "  "
+                    if previous_block is not None and previous_block.kind == "list-item"
+                    else "\n"
+                    if table_sequence
+                    or (
+                        previous_block is not None
+                        and (
+                            previous_block.kind in {"function", "code"}
+                            or block.kind in {"function", "code"}
+                        )
+                    )
+                    else "\n\n"
+                )
+                spans.append(SemanticTextSpan(separator, "body", "semantic-block-boundary"))
+            block_spans = list(_block_spans(block, physical_lines, dict(extraction.variables)))
+            prefix = _structural_prefix(source_path, block, extraction, physical_lines)
+            if prefix is not None:
+                canonical = f"{prefix} {canonical}"
+                block_spans.insert(
+                    0,
+                    SemanticTextSpan(f"{prefix} ", "section-title", "typesetter-counter-derived"),
+                )
+            spans.extend(block_spans)
+            previous_block = block
+    else:
+        style = "display-code" if all(block.kind == "code" for block in blocks) else "body"
+        spans.append(SemanticTextSpan(canonical, style, "source-line-interval"))
+    if table_sequence or compact_sequence:
+        canonical = "".join(span.text for span in spans)
+    elif "".join(span.text for span in spans) != canonical:
+        spans = [SemanticTextSpan(canonical, "body", "source-line-interval")]
+    canonical, selected_spans = _select_source_slice(canonical, tuple(spans), region_locator)
+    spans = list(selected_spans)
+    kinds = {block.kind for block in blocks}
+    sole_kind = next(iter(kinds)) if len(kinds) == 1 else None
+    kind = sole_kind if sole_kind is not None and sole_kind != "list-item" else "body"
+    paragraph_indent = len(blocks) == 1 and blocks[0].paragraph_indent
+    return canonical, tuple(spans), kind, paragraph_indent
+
+
+def _find_unmatched_source(
+    ocr_text: str,
+    source_candidates: tuple[tuple[str, BolioExtraction, str, int, int], ...],
+    previous_end: int | None,
+    next_start: int | None,
+) -> tuple[str, int, int]:
+    wanted = _tokens(ocr_text)
+    for path, extraction, source_text, page_start, page_end in source_candidates:
+        search_start = max(
+            page_start, (previous_end + 1) if previous_end is not None else page_start
+        )
+        search_end = min(page_end, (next_start - 1) if next_start is not None else page_end)
+        physical = source_text.split("\n")
+        for line_number in range(search_start, search_end + 1):
+            if _tokens(physical[line_number - 1]) == wanted:
+                return path, line_number, line_number
+        # Page proposals can begin after a section directive whose printed title
+        # is physically at the top of the page. Include a small, source-local
+        # look-behind for such complete semantic blocks.
+        block_search_start = max(1, page_start - 10)
+        for block in extraction.blocks:
+            if block.span.end_line < block_search_start or block.span.start_line > page_end:
+                continue
+            block_tokens = _tokens(_printed_text(block))
+            exact_or_numbered_title = wanted == block_tokens or (
+                block_tokens
+                and len(wanted) > len(block_tokens)
+                and wanted[-len(block_tokens) :] == block_tokens
+            )
+            if exact_or_numbered_title:
+                return path, block.span.start_line, block.span.end_line
+    raise ValueError(f"unresolved OCR region has no source witness: {ocr_text!r}")
+
+
+def _normalized_box(raw: list[object]) -> list[float]:
+    x1, y1, x2, y2 = (float(value) for value in raw)
+    return [x1 / PAGE_WIDTH, y1 / PAGE_HEIGHT, (x2 - x1) / PAGE_WIDTH, (y2 - y1) / PAGE_HEIGHT]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--proposals", type=Path, required=True)
+    parser.add_argument("--layout-results", type=Path, required=True)
+    parser.add_argument("--render-manifest", type=Path, required=True)
+    parser.add_argument("--source-directory", type=Path, required=True)
+    parser.add_argument("--manual-vars", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    if args.output.exists():
+        raise FileExistsError(f"refusing to overwrite replica output: {args.output}")
+
+    proposals = json.loads(args.proposals.read_text(encoding="utf-8"))
+    layout_results = json.loads(args.layout_results.read_text(encoding="utf-8"))
+    render_manifest = json.loads(args.render_manifest.read_text(encoding="utf-8"))
+    render_root = args.render_manifest.parent
+    render_pages = {int(page["page_number"]): page for page in render_manifest["pages"]}
+    variables_text = args.manual_vars.read_text(encoding="latin-1")
+    cache: dict[str, tuple[BolioExtraction, str]] = {}
+
+    def source(path: str) -> tuple[BolioExtraction, str]:
+        found = cache.get(path)
+        if found is None:
+            text = (args.source_directory / path).read_text(encoding="latin-1")
+            extraction = extract_bolio(text, variables_text)
+            if extraction.issues:
+                raise ValueError(f"source extraction has findings: {path}")
+            found = (extraction, text)
+            cache[path] = found
+        return found
+
+    layout_config = replace(CHINUAL_4E_LAYOUT, minimum_font_size=24.0)
+    assets: dict[str, dict[str, str]] = {}
+    review_pages: list[dict[str, object]] = []
+    replica_manifest_pages: list[dict[str, object]] = []
+    asset_root = args.output / "assets"
+    asset_root.mkdir(parents=True)
+
+    for page_record in proposals["alignments"]:
+        page_number = int(page_record["page_number"])
+        primary = page_record["alignment"]
+        primary_path = str(primary["source_path"])
+        page_sources: dict[str, tuple[int, int]] = {
+            primary_path: (int(primary["start_line"]), int(primary["end_line"]))
+        }
+        for region in page_record["regions"]:
+            alternate = region["alternate_source_alignment"]
+            if alternate is not None:
+                path = str(alternate["source_path"])
+                interval = (int(alternate["start_line"]), int(alternate["end_line"]))
+                previous = page_sources.get(path)
+                page_sources[path] = (
+                    min(previous[0], interval[0]) if previous else interval[0],
+                    max(previous[1], interval[1]) if previous else interval[1],
+                )
+        candidates = tuple(
+            (path, *source(path), start, end) for path, (start, end) in page_sources.items()
+        )
+
+        layouts: list[NativeRegionLayout] = []
+        review_regions: list[dict[str, object]] = []
+        region_manifest: list[dict[str, object]] = []
+        raw_regions = page_record["regions"]
+        for region_index, region in enumerate(raw_regions):
+            alignment = region["alternate_source_alignment"] or region["alignment"]
+            path = str(alignment.get("source_path") or primary_path)
+            start = alignment.get("start_line")
+            end = alignment.get("end_line")
+            if start is None or end is None:
+                previous_end = next(
+                    (
+                        int(raw_regions[index]["alignment"]["end_line"])
+                        for index in range(region_index - 1, -1, -1)
+                        if raw_regions[index]["alignment"]["end_line"] is not None
+                    ),
+                    None,
+                )
+                next_start = next(
+                    (
+                        int(raw_regions[index]["alignment"]["start_line"])
+                        for index in range(region_index + 1, len(raw_regions))
+                        if raw_regions[index]["alignment"]["start_line"] is not None
+                    ),
+                    None,
+                )
+                path, start, end = _find_unmatched_source(
+                    str(region["ocr_text"]), candidates, previous_end, next_start
+                )
+            extraction, source_text = source(path)
+            canonical, spans, kind, paragraph_indent = _region_source(
+                path,
+                extraction,
+                source_text,
+                int(start),
+                int(end),
+                str(region["ocr_text"]),
+            )
+            bbox = tuple(round(float(value)) for value in region["bbox"])
+            try:
+                layout = layout_native_region(
+                    kind=kind,
+                    spans=spans,
+                    bbox=bbox,  # type: ignore[arg-type]
+                    first_line_indent=paragraph_indent,
+                    config=layout_config,
+                )
+            except ValueError as error:
+                region_id = str(region["alignment"]["region_id"])
+                raise ValueError(
+                    f"page {page_number} region {region_id} ({path}:{start}-{end}): {error}"
+                ) from error
+            layouts.append(layout)
+            box = _normalized_box(region["bbox"])
+            review_regions.append(
+                {
+                    "canonical_text": canonical,
+                    "generated_box": box,
+                    "id": str(region["alignment"]["region_id"]),
+                    "kind": kind,
+                    "label": canonical.splitlines()[0][:100],
+                    "ocr_text": str(region["ocr_text"]),
+                    "reference_box": box,
+                    "source_text": canonical,
+                }
+            )
+            region_manifest.append(
+                {
+                    "bbox": list(bbox),
+                    "font_size": layout.font_size,
+                    "kind": kind,
+                    "region_id": str(region["alignment"]["region_id"]),
+                    "source_path": path,
+                    "source_span": [int(start), int(end)],
+                    "text_sha256": hashlib.sha256(canonical.encode()).hexdigest(),
+                }
+            )
+
+        page_key = f"p{page_number:06}"
+        all_blocks = sorted(
+            layout_results[page_key][0]["blocks"], key=lambda block: block["reading_order"]
+        )
+        furniture = [
+            block for block in all_blocks if block["label"] in {"PageHeader", "PageFooter"}
+        ]
+        furniture_manifest: list[dict[str, object]] = []
+        for block in furniture:
+            text = _html_text(str(block["html"]))
+            if not text:
+                continue
+            bbox = tuple(round(float(value)) for value in block["bbox"])
+            layouts.append(
+                layout_native_region(
+                    kind="body",
+                    spans=(SemanticTextSpan(text, evidence="scan-derived-running-matter"),),
+                    bbox=bbox,  # type: ignore[arg-type]
+                    first_line_indent=False,
+                    config=layout_config,
+                )
+            )
+            furniture_manifest.append(
+                {
+                    "bbox": list(bbox),
+                    "evidence": "scan-derived-running-matter",
+                    "kind": str(block["label"]),
+                    "text_sha256": hashlib.sha256(text.encode()).hexdigest(),
+                }
+            )
+
+        replica_name = f"replica-{page_key}.svg"
+        replica_path = asset_root / replica_name
+        _write_new(
+            replica_path,
+            compose_native_svg(layouts, width=PAGE_WIDTH, height=PAGE_HEIGHT, background="#fffdf8"),
+        )
+        rendered = render_pages[page_number]
+        source_scan = render_root / rendered["image"]["path"]
+        scan_name = f"scan-{page_key}.png"
+        scan_path = asset_root / scan_name
+        shutil.copyfile(source_scan, scan_path)
+        scan_id = f"scan-{page_key}"
+        replica_id = f"replica-{page_key}"
+        assets[scan_id] = {
+            "media_type": "image/png",
+            "path": f"assets/{scan_name}",
+            "sha256": _sha256(scan_path),
+        }
+        assets[replica_id] = {
+            "media_type": "image/svg+xml",
+            "path": f"assets/{replica_name}",
+            "sha256": _sha256(replica_path),
+        }
+        review_pages.append(
+            {
+                "generated_asset_id": replica_id,
+                "id": f"page-{page_number:06}",
+                "label": f"PDF page {page_number} - printed page {page_number - 12}",
+                "reference_asset_id": scan_id,
+                "regions": review_regions,
+            }
+        )
+        replica_manifest_pages.append(
+            {
+                "page_number": page_number,
+                "regions": region_manifest,
+                "replica_sha256": _sha256(replica_path),
+                "running_matter": furniture_manifest,
+                "scan_sha256": _sha256(scan_path),
+            }
+        )
+
+    project = {
+        "assets": assets,
+        "document_id": "chinual-4e-source-replica-slice-91-110",
+        "format_version": "1.0",
+        "pages": review_pages,
+        "review_instructions": {
+            "page": (
+                "Accept only if the generated source-derived vector page preserves "
+                "the scan's content and overall physical structure."
+            ),
+            "region": (
+                "Accept if source text, source-scoped formatting, wrapping, and "
+                "placement agree with the highlighted scan region."
+            ),
+        },
+        "title": "Chinual pages 91-110 - source-derived replica review",
+    }
+    _write_new(args.output / "review-project.json", _json_bytes(project))
+    _write_new(
+        args.output / "replica-manifest.json",
+        _json_bytes(
+            {
+                "format_version": "lispmdoc-chinual-replica-slice-1",
+                "layout_results_sha256": _sha256(args.layout_results),
+                "manual_vars_sha256": _sha256(args.manual_vars),
+                "pages": replica_manifest_pages,
+                "proposals_sha256": _sha256(args.proposals),
+                "source_pdf_sha256": render_manifest["source"]["sha256"],
+                "source_files": {
+                    path: _sha256(args.source_directory / path) for path in sorted(cache)
+                },
+                "typography": {
+                    "fonts": [
+                        _font_identity(family)
+                        for family in (
+                            CHINUAL_SERIF_FONT,
+                            CHINUAL_SANS_FONT,
+                            CHINUAL_MONO_FONT,
+                        )
+                    ],
+                    "minimum_font_size": layout_config.minimum_font_size,
+                    "profile": "chinual-4e-measured-v1",
+                },
+            }
+        ),
+    )
+    print((args.output / "review-project.json").resolve())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
