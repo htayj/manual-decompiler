@@ -94,9 +94,11 @@ This is a separate structural paragraph.
     assert extraction.blocks[2].span.to_dict() == {"start_line": 5, "end_line": 6}
 
 
-def test_ambiguous_prose_edge_whitespace_fails_closed_instead_of_becoming_text() -> None:
-    with pytest.raises(BolioSyntaxError, match="edge whitespace"):
-        extract_bolio("text with a trailing space \nnext source line", VARS)
+def test_prose_indent_is_structural_and_trailing_editor_space_is_not_visible() -> None:
+    extraction = extract_bolio("\tIndented paragraph line \ncontinuation", VARS)
+
+    assert extraction.blocks[0].text == "Indented paragraph line continuation"
+    assert extraction.blocks[0].paragraph_indent
 
 
 def test_cross_reference_resolution_is_strict() -> None:
@@ -146,3 +148,34 @@ def test_explicit_bold_is_scoped_by_source_controls_not_token_spelling() -> None
 def test_unbalanced_explicit_bold_fails_closed() -> None:
     with pytest.raises(BolioSyntaxError, match="not closed"):
         semantic_spans(kind="body", reference_text="same", raw_lines=("\x19same",), variables={})
+
+
+def test_tables_defspec_defun1_and_sail_comparison_glyphs_are_structural() -> None:
+    source = """\
+.defspec defresource
+.table 3
+.kitem :constructor
+Makes the resource.
+.end_table
+.end_defspec
+.defun >= x y
+.defun1 \x11\x1d x y
+Returns \x19t\x18 when x \x1d y.
+.lisp
+(\x1d x y)
+.end_lisp
+.end_defun
+"""
+
+    extraction = extract_bolio(source, VARS)
+
+    assert [(block.kind, block.text) for block in extraction.blocks] == [
+        ("function", "defresource"),
+        ("list-item", ":constructor"),
+        ("body", "Makes the resource."),
+        ("function", ">= x y"),
+        ("function", "≥ x y"),
+        ("body", "Returns t when x ≥ y."),
+        ("code", "(≥ x y)"),
+    ]
+    assert not extraction.issues

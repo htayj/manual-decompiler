@@ -47,20 +47,37 @@ _DEFPROP = re.compile(
     r"\s+JUST-VALUE\s*\)\s*$",
     re.IGNORECASE,
 )
-_DIRECTIVE = re.compile(r"^\.(?P<name>[A-Za-z_]+)(?:[ \t]+(?P<argument>.*))?$")
+_DIRECTIVE = re.compile(r"^\.(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?:[ \t]+(?P<argument>.*))?$")
 _SECTION_NUMBER = re.compile(r"\bsection\s+([0-9]+(?:\.[0-9]+)*)\b", re.IGNORECASE)
 _CONTROL_NAME = re.compile(r"[A-Za-z0-9:+*/%<>=?_-]+$")
 _SETQ = re.compile(r"^(?P<name>[^\s]+)\s+(?P<value>[^\s]+)\s*$")
 
-_SUPPORTED_DIRECTIVES = frozenset({
-    "defun",
-    "section",
-    "lisp",
-    "end_lisp",
-    "end_defun",
-    "setq",
-})
+_SUPPORTED_DIRECTIVES = frozenset(
+    {
+        "c",
+        "chapter",
+        "cindex",
+        "defun",
+        "defun1",
+        "defspec",
+        "end_defspec",
+        "end_defun",
+        "end_lisp",
+        "end_table",
+        "exdent",
+        "item",
+        "kitem",
+        "lisp",
+        "nopara",
+        "section",
+        "setq",
+        "sp",
+        "subsection",
+        "table",
+    }
+)
 _LINE_BREAK_POLICIES = frozenset({"structural", "reflow-editorial", "preserve"})
+_VISIBLE_SAIL_CHARACTERS = {"\x1c": "≤", "\x1d": "≥"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,20 +117,24 @@ class BolioBlock:
     name: str | None = None
     section_number: str | None = None
     line_break_policy: str = "structural"
+    paragraph_indent: bool = False
 
     def __post_init__(self) -> None:
-        if self.kind not in {"function", "section", "body", "code"}:
+        if self.kind not in {"function", "section", "list-item", "body", "code"}:
             raise BolioError(f"unsupported Bolio block kind: {self.kind!r}")
         if not self.text:
             raise BolioError("Bolio block text must not be empty")
         if self.kind != "section" and self.section_number is not None:
             raise BolioError("only section blocks may carry a section number")
+        if self.paragraph_indent and self.kind != "body":
+            raise BolioError("only body blocks may carry a paragraph indent")
         if self.line_break_policy not in _LINE_BREAK_POLICIES:
             raise BolioError("Bolio block has an unsupported line-break policy")
         expected_policy = {
             "body": "reflow-editorial",
             "code": "preserve",
             "function": "structural",
+            "list-item": "structural",
             "section": "structural",
         }[self.kind]
         if self.line_break_policy != expected_policy:
@@ -124,6 +145,7 @@ class BolioBlock:
             "kind": self.kind,
             "line_break_policy": self.line_break_policy,
             "name": self.name,
+            "paragraph_indent": self.paragraph_indent,
             "section_number": self.section_number,
             "source_span": self.span.to_dict(),
             "text": self.text,
@@ -239,7 +261,7 @@ def _normalize_visible_line(
                 output.append(character)
                 index += 1
             else:
-                output.append(line[index + 1])
+                output.append(_VISIBLE_SAIL_CHARACTERS.get(line[index + 1], line[index + 1]))
                 index += 2
             continue
         if character == "\x16":  # ^V(name): typesetter variable/cross-reference.
@@ -257,7 +279,12 @@ def _normalize_visible_line(
         if character in {"\x18", "\x19"}:  # ^X/^Y: end/begin bold.
             index += 1
             continue
-        if code < 32 or code == 127:
+        replacement = _VISIBLE_SAIL_CHARACTERS.get(character)
+        if replacement is not None:
+            output.append(replacement)
+            index += 1
+            continue
+        if (code < 32 and character != "\t") or code == 127:
             issues.append(
                 BolioIssue(
                     "unsupported-control", line_number, f"unsupported control byte 0x{code:02x}"
@@ -274,18 +301,13 @@ def _reflow_editorial_prose(lines: list[str]) -> str:
     A non-empty run outside an explicit structural environment is one Bolio
     paragraph.  Its physical source newlines are not printed line breaks.  We
     use one separating space while retaining every interior character
-    (including meaningful double sentence spaces) of each line.  Leading or
-    trailing source whitespace is ambiguous: it might be editorial, or it
-    might encode an unimplemented layout feature.  Rather than normalize it
-    away, fail closed and require a richer Bolio model.  Code and directives do
-    not call this function.
+    (including meaningful double sentence spaces) of each line. Leading
+    indentation is classified before this function and retained on the block;
+    trailing editor whitespace is non-printing. Code and directives do not call
+    this function.
     """
     if not lines:
         raise BolioError("cannot reflow an empty Bolio prose block")
-    if any(line != line.strip(" \t") for line in lines):
-        raise BolioSyntaxError(
-            "Bolio prose line has edge whitespace; its layout semantics are unsupported"
-        )
     if any(not line for line in lines):
         raise BolioError("Bolio prose block contains an unclassified blank line")
     return " ".join(lines)
@@ -359,14 +381,16 @@ def extract_bolio(
     issues: list[BolioIssue] = []
     buffered_lines: list[str] = []
     buffer_start: int | None = None
+    buffer_indent = False
     code_lines: list[str] = []
     code_start: int | None = None
     in_lisp = False
-    in_function = False
+    definition_kind: str | None = None
+    in_table = False
     pending_section: tuple[str, int] | None = None
 
     def flush_body() -> None:
-        nonlocal buffer_start
+        nonlocal buffer_indent, buffer_start
         if not buffered_lines:
             return
         assert buffer_start is not None
@@ -376,10 +400,12 @@ def extract_bolio(
                 _reflow_editorial_prose(buffered_lines),
                 BolioSourceSpan(buffer_start, buffer_start + len(buffered_lines) - 1),
                 line_break_policy="reflow-editorial",
+                paragraph_indent=buffer_indent,
             )
         )
         buffered_lines.clear()
         buffer_start = None
+        buffer_indent = False
 
     def flush_code(end: int) -> None:
         nonlocal code_start
@@ -403,9 +429,7 @@ def extract_bolio(
             return
         title, line = pending_section
         blocks.append(
-            BolioBlock(
-                "section", title, BolioSourceSpan(line, line), section_number=section_number
-            )
+            BolioBlock("section", title, BolioSourceSpan(line, line), section_number=section_number)
         )
         pending_section = None
 
@@ -419,12 +443,18 @@ def extract_bolio(
                 if code_start is None:
                     code_start = line_number
                 code_lines.append(normalized)
-            elif normalized:
+            else:
+                stripped = normalized.strip(" \t")
+                leading_indent = bool(normalized) and normalized[0] in " \t"
+                if leading_indent and buffered_lines:
+                    flush_body()
+                if not stripped:
+                    flush_body()
+                    continue
                 if buffer_start is None:
                     buffer_start = line_number
-                buffered_lines.append(normalized)
-            else:
-                flush_body()
+                    buffer_indent = leading_indent
+                buffered_lines.append(stripped)
             continue
 
         name = directive.group("name").lower()
@@ -434,9 +464,27 @@ def extract_bolio(
             flush_body()
             issues.append(BolioIssue("unsupported-directive", line_number, f".{name}"))
             continue
-        if name == "section":
+        if in_lisp:
+            if name == "end_lisp":
+                flush_code(line_number - 1)
+                in_lisp = False
+                continue
+            if name == "exdent":
+                visible = re.sub(r"^[0-9]+(?:\s+|$)", "", argument)
+                normalized = _normalize_visible_line(visible, raw_variables, line_number, issues)
+                if normalized:
+                    if code_start is None:
+                        code_start = line_number
+                    code_lines.append(normalized)
+                continue
+            if name in {"c", "cindex"}:
+                continue
+            raise BolioSyntaxError(f"Bolio line {line_number} starts .{name} inside .lisp")
+        if name in {"c", "cindex", "nopara", "sp"}:
+            continue
+        if name in {"chapter", "section", "subsection"}:
             if in_lisp:
-                raise BolioSyntaxError(f"Bolio line {line_number} starts .section inside .lisp")
+                raise BolioSyntaxError(f"Bolio line {line_number} starts .{name} inside .lisp")
             flush_body()
             emit_pending_section()
             pending_section = (_parse_section_title(argument, line_number), line_number)
@@ -451,43 +499,74 @@ def extract_bolio(
                 emit_pending_section()
             continue
         emit_pending_section()
-        if name == "defun":
-            if in_lisp or in_function:
-                raise BolioSyntaxError(f"Bolio line {line_number} starts nested .defun")
+        if name in {"defun", "defun1", "defspec"}:
+            if name == "defun1" and definition_kind != "defun":
+                raise BolioSyntaxError(f"Bolio line {line_number} has .defun1 outside .defun")
+            if name != "defun1" and definition_kind is not None:
+                raise BolioSyntaxError(f"Bolio line {line_number} starts nested .{name}")
             flush_body()
-            function_name, signature = _parse_function(argument, line_number)
+            visible_argument = _normalize_visible_line(argument, raw_variables, line_number, issues)
+            function_name, signature = _parse_function(visible_argument, line_number)
             blocks.append(
                 BolioBlock(
                     "function", signature, BolioSourceSpan(line_number, line_number), function_name
                 )
             )
-            in_function = True
+            if name != "defun1":
+                definition_kind = name
             continue
-        if name == "end_defun":
-            if in_lisp or not in_function:
-                raise BolioSyntaxError(f"Bolio line {line_number} closes an absent .defun")
+        if name in {"end_defun", "end_defspec"}:
+            expected = name.removeprefix("end_")
+            if definition_kind != expected:
+                raise BolioSyntaxError(f"Bolio line {line_number} closes an absent .{expected}")
             flush_body()
-            in_function = False
+            definition_kind = None
             continue
         if name == "lisp":
-            if in_lisp:
-                raise BolioSyntaxError(f"Bolio line {line_number} starts nested .lisp")
             flush_body()
             in_lisp = True
             continue
-        if name == "end_lisp":
-            if not in_lisp:
-                raise BolioSyntaxError(f"Bolio line {line_number} closes an absent .lisp")
-            flush_code(line_number - 1)
-            in_lisp = False
+        if name == "table":
+            if in_table:
+                raise BolioSyntaxError(f"Bolio line {line_number} starts nested .table")
+            flush_body()
+            in_table = True
+            continue
+        if name == "end_table":
+            if not in_table:
+                raise BolioSyntaxError(f"Bolio line {line_number} closes an absent .table")
+            flush_body()
+            in_table = False
+            continue
+        if name in {"item", "kitem"}:
+            if not in_table:
+                raise BolioSyntaxError(f"Bolio line {line_number} has .{name} outside .table")
+            flush_body()
+            normalized = _normalize_visible_line(argument, raw_variables, line_number, issues)
+            if not normalized:
+                raise BolioSyntaxError(f"Bolio line {line_number} has an empty .{name}")
+            blocks.append(
+                BolioBlock("list-item", normalized, BolioSourceSpan(line_number, line_number))
+            )
+            continue
+        if name == "exdent":
+            flush_body()
+            visible = re.sub(r"^[0-9]+(?:\s+|$)", "", argument)
+            normalized = _normalize_visible_line(visible, raw_variables, line_number, issues)
+            if normalized:
+                blocks.append(
+                    BolioBlock("list-item", normalized, BolioSourceSpan(line_number, line_number))
+                )
             continue
         raise AssertionError(f"handled directive unexpectedly escaped: {name}")
 
     emit_pending_section()
     if in_lisp:
         raise BolioSyntaxError("selected Bolio source span ends inside .lisp")
-    if in_function:
-        raise BolioSyntaxError("selected Bolio source span ends inside .defun")
+    if definition_kind is not None:
+        raise BolioSyntaxError(f"selected Bolio source span ends inside .{definition_kind}")
+    if in_table:
+        raise BolioSyntaxError("selected Bolio source span ends inside .table")
     flush_body()
     return BolioExtraction(tuple(blocks), tuple(issues), raw_variables)
 

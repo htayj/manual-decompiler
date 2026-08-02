@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from .bolio import BolioSyntaxError
 
 _ROLE_BY_SELECTOR = {"1": "body", "2": "font-2-italic", "3": "font-3-inline-lisp"}
+_VISIBLE_SAIL_CHARACTERS = {"\x1c": "≤", "\x1d": "≥"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +86,16 @@ def _inline_spans(
             if character == "\x11":
                 if index + 1 >= len(source_line):
                     raise BolioSyntaxError("truncated Bolio quoted-character control")
-                spans.append(SemanticTextSpan(source_line[index + 1], style, evidence, bold))
+                spans.append(
+                    SemanticTextSpan(
+                        _VISIBLE_SAIL_CHARACTERS.get(
+                            source_line[index + 1], source_line[index + 1]
+                        ),
+                        style,
+                        evidence,
+                        bold,
+                    )
+                )
                 index += 2
                 continue
             if (
@@ -115,7 +125,11 @@ def _inline_spans(
                 bold = False
                 index += 1
                 continue
-            spans.append(SemanticTextSpan(character, style, evidence, bold))
+            spans.append(
+                SemanticTextSpan(
+                    _VISIBLE_SAIL_CHARACTERS.get(character, character), style, evidence, bold
+                )
+            )
             index += 1
     if font_stack:
         raise BolioSyntaxError("Bolio font push is not closed by ^F*")

@@ -226,11 +226,23 @@ review-required mapping proposals and not ground truth. OCR artifacts, renders,
 source files, and proposals are separately digest-bound in ignored work
 storage.
 
+The four recovered source files now extract end to end with zero findings. The
+reader covers the slice's special-form definitions, alias definitions, tables
+and items, indented prose, exdented code labels, and SAIL `<=`/`>=` glyphs. A
+digest-pinned Surya run retained rich layout for all 20 pages (SHA-256
+`6e55ce5261c6acf37999923abb97a5f44f7f3a2b9053b9c6c1232d7b964af79e`);
+one page used Surya's explicit block-mode fallback. Region reconciliation
+explains every substantial block and detects the page-93 transition from
+`fd_con.141` to `resour.15`, despite the old source footer remaining on that
+page. The resulting 20-page, 21-segment mapping review is served only on
+loopback and asks for source-mapping approval, not transcription or layout
+approval.
+
 ## Current automated verification
 
 ```text
 uv run pytest -q
-230 passed
+232 passed
 
 uv run ruff check .
 All checks passed

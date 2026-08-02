@@ -8,11 +8,32 @@ import hashlib
 import json
 import re
 import subprocess
+from html.parser import HTMLParser
 from pathlib import Path
 
-from lispmdoc.benchmark import RecoveredSourceIndex, parse_manual_vars
+from lispmdoc.benchmark import (
+    OcrRegionText,
+    RecoveredSourceIndex,
+    align_ocr_regions_to_source,
+    parse_manual_vars,
+)
 
 _PAGE_NAME = re.compile(r"p(?P<page>[0-9]{6})\.txt")
+
+
+class _TextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+
+def _html_text(value: str) -> str:
+    parser = _TextExtractor()
+    parser.feed(value)
+    return " ".join("".join(parser.parts).split())
 
 
 def _sha256(path: Path) -> str:
@@ -36,6 +57,7 @@ def main() -> int:
     parser.add_argument("--ocr-directory", type=Path, required=True)
     parser.add_argument("--source-directory", type=Path, required=True)
     parser.add_argument("--manual-vars", type=Path, required=True)
+    parser.add_argument("--layout-results", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -49,6 +71,9 @@ def main() -> int:
     )
     sources = {path.name: path.read_text(encoding="latin-1") for path in source_paths}
     index = RecoveredSourceIndex(sources, variables)
+    layout_results = (
+        json.loads(args.layout_results.read_text(encoding="utf-8")) if args.layout_results else None
+    )
     alignments: list[dict[str, object]] = []
     for ocr_path in sorted(args.ocr_directory.glob("p??????.txt")):
         match = _PAGE_NAME.fullmatch(ocr_path.name)
@@ -59,6 +84,47 @@ def main() -> int:
             raise ValueError(f"OCR page {page_number} is absent from the render manifest")
         alignment = index.align(ocr_path.read_text(encoding="utf-8"))
         source_path = args.source_directory / alignment.source_path
+        region_records: list[dict[str, object]] = []
+        if layout_results is not None:
+            page_key = f"p{page_number:06}"
+            raw_page = layout_results.get(page_key)
+            if not isinstance(raw_page, list) or len(raw_page) != 1:
+                raise ValueError(f"layout results lack one output for {page_key}")
+            raw_blocks = sorted(raw_page[0]["blocks"], key=lambda block: block["reading_order"])
+            content_blocks = [
+                block for block in raw_blocks if block["label"] not in {"PageHeader", "PageFooter"}
+            ]
+            region_texts = tuple(
+                OcrRegionText(f"block-{index:03d}", _html_text(block["html"]))
+                for index, block in enumerate(content_blocks, start=1)
+            )
+            region_alignments = align_ocr_regions_to_source(
+                region_texts,
+                sources[alignment.source_path],
+                variables,
+                approximate_start_line=alignment.start_line,
+                approximate_end_line=alignment.end_line,
+            )
+            region_records = [
+                {
+                    "alignment": region_alignment.to_dict(),
+                    "alternate_source_alignment": (
+                        alternate.to_dict()
+                        if region_alignment.coverage_milli < 500
+                        and len(region_text.text.split()) >= 10
+                        and (alternate := index.align(region_text.text)).coverage_milli
+                        > region_alignment.coverage_milli
+                        else None
+                    ),
+                    "bbox": block["bbox"],
+                    "layout_label": block["label"],
+                    "ocr_text": region_text.text,
+                    "reading_order": block["reading_order"],
+                }
+                for block, region_text, region_alignment in zip(
+                    content_blocks, region_texts, region_alignments, strict=True
+                )
+            ]
         alignments.append(
             {
                 "alignment": alignment.to_dict(),
@@ -68,6 +134,7 @@ def main() -> int:
                 },
                 "page_number": page_number,
                 "render_sha256": rendered["image"]["sha256"],
+                "regions": region_records,
                 "source_sha256": _sha256(source_path),
             }
         )
@@ -80,6 +147,9 @@ def main() -> int:
             "format_version": "lispmdoc-source-alignment-proposals-1",
             "ground_truth_status": "not-ground-truth",
             "manual_vars_sha256": _sha256(args.manual_vars),
+            "layout_results_sha256": (
+                _sha256(args.layout_results) if args.layout_results else None
+            ),
             "ocr_engine": {
                 "name": "tesseract",
                 "version": subprocess.run(

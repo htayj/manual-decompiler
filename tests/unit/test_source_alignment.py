@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lispmdoc.benchmark import align_ocr_page_to_sources
+from lispmdoc.benchmark import OcrRegionText, align_ocr_page_to_sources, align_ocr_regions_to_source
 
 
 def test_ocr_alignment_selects_source_and_retains_approximate_lines() -> None:
@@ -48,3 +48,39 @@ def test_repeated_text_outside_page_cluster_does_not_expand_line_range() -> None
 
     assert aligned.start_line > 140
     assert aligned.end_line <= 153
+
+
+def test_ordered_ocr_regions_retain_exact_source_line_evidence() -> None:
+    source = """\
+.section Property Lists
+Every symbol has an associated property list.
+When created, that property list is empty.
+.defun get symbol indicator
+Get searches for the indicator and returns its value.
+"""
+    regions = (
+        OcrRegionText("heading", "Property Lists"),
+        OcrRegionText(
+            "prose",
+            "Every symbol has an associated property list. "
+            "When created, that property list is empty.",
+        ),
+        OcrRegionText("definition", "get symbol indicator"),
+        OcrRegionText("explanation", "Get searches for the indicator and returns its value."),
+    )
+
+    aligned = align_ocr_regions_to_source(
+        regions,
+        source,
+        {},
+        approximate_start_line=1,
+        approximate_end_line=5,
+    )
+
+    assert [(item.region_id, item.start_line, item.end_line) for item in aligned] == [
+        ("heading", 1, 1),
+        ("prose", 2, 3),
+        ("definition", 4, 4),
+        ("explanation", 5, 5),
+    ]
+    assert all(item.coverage_milli == 1000 for item in aligned)

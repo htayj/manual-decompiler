@@ -50,7 +50,14 @@ from .report import (
     ground_truth_digest,
 )
 from .review_annotations import apply_review_annotations
-from .source_alignment import RecoveredSourceIndex, SourceLineAlignment, align_ocr_page_to_sources
+from .source_alignment import (
+    OcrRegionText,
+    RecoveredSourceIndex,
+    RegionSourceAlignment,
+    SourceLineAlignment,
+    align_ocr_page_to_sources,
+    align_ocr_regions_to_source,
+)
 from .source_reference import ReferenceArtifact, ReferenceRegion, render_reference_artifact
 from .spatial_evaluation import (
     SpatialEvaluation,
@@ -117,7 +124,9 @@ __all__ = [
     "SelectionResult",
     "SemanticTextSpan",
     "REQUIRED_COMPOSITION",
+    "OcrRegionText",
     "RecoveredSourceIndex",
+    "RegionSourceAlignment",
     "WAVE1_VERSION",
     "CoverageDisposition",
     "ExpectedRunIdentity",
@@ -148,6 +157,7 @@ __all__ = [
     "WorkspaceResult",
     "aggregate_engine_reports",
     "align_ocr_page_to_sources",
+    "align_ocr_regions_to_source",
     "apply_review_annotations",
     "candidates_from_inspections",
     "extract_bolio",

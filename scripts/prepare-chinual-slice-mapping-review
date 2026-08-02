@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""Build a compact, mapping-only review for the Chinual 20-page slice."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import shutil
+from pathlib import Path
+
+from lispmdoc.benchmark import BolioExtraction, extract_bolio, parse_manual_vars
+from lispmdoc.benchmark.source_reference import render_reference_artifact
+
+PAGE_WIDTH = 2550
+PAGE_HEIGHT = 3300
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_new(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8") as stream:
+        json.dump(value, stream, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        stream.write("\n")
+
+
+def _box_union(regions: list[dict[str, object]]) -> list[float]:
+    boxes = [region["bbox"] for region in regions]
+    if not boxes:
+        return [0.0, 0.0, 1.0, 1.0]
+    x1 = min(float(box[0]) for box in boxes)  # type: ignore[index]
+    y1 = min(float(box[1]) for box in boxes)  # type: ignore[index]
+    x2 = max(float(box[2]) for box in boxes)  # type: ignore[index]
+    y2 = max(float(box[3]) for box in boxes)  # type: ignore[index]
+    return [x1 / PAGE_WIDTH, y1 / PAGE_HEIGHT, (x2 - x1) / PAGE_WIDTH, (y2 - y1) / PAGE_HEIGHT]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--proposals", type=Path, required=True)
+    parser.add_argument("--render-manifest", type=Path, required=True)
+    parser.add_argument("--source-directory", type=Path, required=True)
+    parser.add_argument("--manual-vars", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    if args.output.exists():
+        raise FileExistsError(f"refusing to overwrite review output: {args.output}")
+
+    proposals = json.loads(args.proposals.read_text(encoding="utf-8"))
+    render_manifest = json.loads(args.render_manifest.read_text(encoding="utf-8"))
+    render_root = args.render_manifest.parent
+    render_pages = {int(page["page_number"]): page for page in render_manifest["pages"]}
+    variables_text = args.manual_vars.read_text(encoding="latin-1")
+    variables = parse_manual_vars(variables_text)
+    extraction_cache: dict[str, BolioExtraction] = {}
+
+    assets: dict[str, dict[str, str]] = {}
+    pages: list[dict[str, object]] = []
+    asset_root = args.output / "assets"
+    asset_root.mkdir(parents=True)
+    for page_record in proposals["alignments"]:
+        page_number = int(page_record["page_number"])
+        source_alignment = page_record["alignment"]
+        source_path = str(source_alignment["source_path"])
+        rendered = render_pages[page_number]
+        source_scan = render_root / rendered["image"]["path"]
+        scan_name = f"scan-p{page_number:06}.png"
+        scan_path = asset_root / scan_name
+        shutil.copyfile(source_scan, scan_path)
+        asset_id = f"scan-p{page_number:06}"
+        assets[asset_id] = {
+            "media_type": "image/png",
+            "path": f"assets/{scan_name}",
+            "sha256": _sha256(scan_path),
+        }
+
+        segments: list[tuple[str, int, int, int, list[dict[str, object]]]] = []
+        primary_regions = [
+            region
+            for region in page_record["regions"]
+            if region["alternate_source_alignment"] is None
+        ]
+        segments.append(
+            (
+                source_path,
+                int(source_alignment["start_line"]),
+                int(source_alignment["end_line"]),
+                int(source_alignment["coverage_milli"]),
+                primary_regions,
+            )
+        )
+        alternatives: dict[str, list[dict[str, object]]] = {}
+        for region in page_record["regions"]:
+            alternate = region["alternate_source_alignment"]
+            if alternate is not None:
+                alternatives.setdefault(str(alternate["source_path"]), []).append(region)
+        for alternate_path, alternate_regions in sorted(alternatives.items()):
+            alternate_records = [
+                region["alternate_source_alignment"] for region in alternate_regions
+            ]
+            segments.append(
+                (
+                    alternate_path,
+                    min(int(item["start_line"]) for item in alternate_records),
+                    max(int(item["end_line"]) for item in alternate_records),
+                    round(
+                        sum(int(item["coverage_milli"]) for item in alternate_records)
+                        / len(alternate_records)
+                    ),
+                    alternate_regions,
+                )
+            )
+
+        review_regions: list[dict[str, object]] = []
+        for segment_index, (path, start, end, coverage, aligned_regions) in enumerate(segments, 1):
+            extraction = extraction_cache.get(path)
+            if extraction is None:
+                source_text = (args.source_directory / path).read_text(encoding="latin-1")
+                extraction = extract_bolio(source_text, variables_text)
+                if extraction.issues:
+                    raise ValueError(f"recovered source has extraction findings: {path}")
+                extraction_cache[path] = extraction
+            selected_blocks = tuple(
+                block
+                for block in extraction.blocks
+                if block.span.end_line >= start and block.span.start_line <= end
+            )
+            selected = BolioExtraction(selected_blocks, (), variables)
+            excerpt = render_reference_artifact(selected).text.rstrip()
+            label = f"{path} lines {start}-{end} ({coverage / 10:.1f}% locator coverage)"
+            box = _box_union(aligned_regions)
+            review_regions.append(
+                {
+                    "canonical_text": excerpt,
+                    "generated_box": box,
+                    "id": f"mapping-{segment_index:02d}",
+                    "kind": "source-mapping",
+                    "label": label,
+                    "ocr_text": "\n\n".join(str(region["ocr_text"]) for region in aligned_regions),
+                    "reference_box": box,
+                    "source_text": excerpt,
+                }
+            )
+        pages.append(
+            {
+                "generated_asset_id": asset_id,
+                "id": f"page-{page_number:06}",
+                "label": f"PDF page {page_number} · printed page {page_number - 12}",
+                "reference_asset_id": asset_id,
+                "regions": review_regions,
+            }
+        )
+
+    project = {
+        "assets": assets,
+        "document_id": "chinual-4th-edition-mapping-slice-91-110",
+        "format_version": "1.0",
+        "pages": pages,
+        "proposals_sha256": _sha256(args.proposals),
+        "review_instructions": {
+            "page": (
+                "Accept only if the named recovered source file or files correspond to this scan "
+                "page. This gate does not approve OCR wording, typography, or replica layout."
+            ),
+            "region": (
+                "Accept if this recovered source segment belongs in the highlighted portion of "
+                "the scan. Exact line boundaries are locator evidence and may be noted for repair."
+            ),
+        },
+        "title": "Chinual pages 91-110 - recovered-source mapping review",
+    }
+    _write_new(args.output / "review-project.json", project)
+    print((args.output / "review-project.json").resolve())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -20,6 +20,7 @@ class ReferenceRegion:
     bolio_start_line: int
     bolio_end_line: int
     line_break_policy: str
+    paragraph_indent: bool
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -30,6 +31,7 @@ class ReferenceRegion:
             "index": self.index,
             "kind": self.kind,
             "line_break_policy": self.line_break_policy,
+            "paragraph_indent": self.paragraph_indent,
             "source_span": self.source_span.to_dict(),
             "text": self.text,
         }
@@ -92,6 +94,7 @@ def render_reference_artifact(extraction: BolioExtraction) -> ReferenceArtifact:
                 block.span.start_line,
                 block.span.end_line,
                 block.line_break_policy,
+                block.paragraph_indent,
             )
         )
     text = "\n".join(output_lines) + ("\n" if output_lines else "")
