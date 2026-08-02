@@ -115,7 +115,11 @@ def _tokens(text: str) -> tuple[str, ...]:
 
 def _visible_source_tokens(text: str, variables: Mapping[str, str]) -> tuple[tuple[str, int], ...]:
     tokens: list[tuple[str, int]] = []
-    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+    physical_lines = text.split("\n")
+    if physical_lines and not physical_lines[-1]:
+        physical_lines.pop()
+    for line_number, raw_value in enumerate(physical_lines, start=1):
+        raw_line = raw_value[:-1] if raw_value.endswith("\r") else raw_value
         directive = _VISIBLE_DIRECTIVE.fullmatch(raw_line)
         if directive:
             visible = directive.group("text")

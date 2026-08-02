@@ -48,12 +48,14 @@ def main() -> int:
     parser.add_argument("--render-manifest", type=Path, required=True)
     parser.add_argument("--source-directory", type=Path, required=True)
     parser.add_argument("--manual-vars", type=Path, required=True)
+    parser.add_argument("--pages", help="optional comma-separated PDF page numbers")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.output.exists():
         raise FileExistsError(f"refusing to overwrite review output: {args.output}")
 
     proposals = json.loads(args.proposals.read_text(encoding="utf-8"))
+    selected_pages = {int(value) for value in args.pages.split(",")} if args.pages else None
     render_manifest = json.loads(args.render_manifest.read_text(encoding="utf-8"))
     render_root = args.render_manifest.parent
     render_pages = {int(page["page_number"]): page for page in render_manifest["pages"]}
@@ -67,6 +69,8 @@ def main() -> int:
     asset_root.mkdir(parents=True)
     for page_record in proposals["alignments"]:
         page_number = int(page_record["page_number"])
+        if selected_pages is not None and page_number not in selected_pages:
+            continue
         source_alignment = page_record["alignment"]
         source_path = str(source_alignment["source_path"])
         rendered = render_pages[page_number]
@@ -157,6 +161,11 @@ def main() -> int:
                 "regions": review_regions,
             }
         )
+
+    if selected_pages is not None:
+        missing_pages = selected_pages - {int(page["id"].removeprefix("page-")) for page in pages}
+        if missing_pages:
+            raise ValueError(f"requested pages are absent from proposals: {sorted(missing_pages)}")
 
     project = {
         "assets": assets,

@@ -84,3 +84,19 @@ Get searches for the indicator and returns its value.
         ("explanation", 5, 5),
     ]
     assert all(item.coverage_milli == 1000 for item in aligned)
+
+
+def test_sail_control_characters_do_not_create_phantom_source_lines() -> None:
+    regions = (OcrRegionText("comparison", "third line after comparison"),)
+    source = "first line\nx \x1d y\nthird line after comparison\n"
+
+    aligned = align_ocr_regions_to_source(
+        regions,
+        source,
+        {},
+        approximate_start_line=1,
+        approximate_end_line=3,
+    )
+
+    assert aligned[0].start_line == 3
+    assert aligned[0].end_line == 3

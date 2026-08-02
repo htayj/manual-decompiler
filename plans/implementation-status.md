@@ -238,11 +238,20 @@ page. The resulting 20-page, 21-segment mapping review is served only on
 loopback and asks for source-mapping approval, not transcription or layout
 approval.
 
+The first mapping review accepted all page/source identities and exposed one
+line-boundary defect on page 110. The locator had used Python `splitlines()`,
+which incorrectly treats historical SAIL comparison control characters as
+line separators. It now splits only on physical LF, with a regression test.
+Corrected proposals change only pages after such controls; a focused seven-page
+mapping review covers pages 96, 97, and 106 through 110. Page 110 now spans
+`fd_num.77` lines 398 through 444, includes `add1`, and excludes the following
+Transcendental Functions section.
+
 ## Current automated verification
 
 ```text
 uv run pytest -q
-232 passed
+233 passed
 
 uv run ruff check .
 All checks passed
