@@ -364,8 +364,10 @@ def render_bolio_interval(
                     continue
                 visible = _normalize_visible_line(
                     raw_line, extraction.variables, line_number, issues
-                ).strip(" \t")
-                if visible:
+                )
+                if block.kind != "code":
+                    visible = visible.strip(" \t")
+                if visible or block.kind == "code":
                     visible_lines.append(visible)
             text = ("\n" if block.kind == "code" else " ").join(visible_lines)
         if text:

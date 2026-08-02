@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import subprocess
+import textwrap
 from dataclasses import replace
 from html.parser import HTMLParser
 from pathlib import Path
@@ -26,6 +27,7 @@ from lispmdoc.typography import (
     CHINUAL_MONO_FONT,
     CHINUAL_SANS_FONT,
     CHINUAL_SERIF_FONT,
+    NativeLayoutConfig,
     NativeRegionLayout,
     compose_native_svg,
     layout_native_region,
@@ -101,9 +103,17 @@ def _printed_text(block: BolioBlock) -> str:
     return block.text
 
 
-def _raw_block_lines(block: BolioBlock, physical_lines: tuple[str, ...]) -> tuple[str, ...]:
+def _raw_block_lines(
+    block: BolioBlock,
+    physical_lines: tuple[str, ...],
+    *,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> tuple[str, ...]:
     lines: list[str] = []
-    for raw_line in physical_lines[block.span.start_line - 1 : block.span.end_line]:
+    first = max(block.span.start_line, start_line or block.span.start_line)
+    last = min(block.span.end_line, end_line or block.span.end_line)
+    for raw_line in physical_lines[first - 1 : last]:
         directive = re.fullmatch(r"\.exdent(?:[ \t]+(.*))?", raw_line, flags=re.IGNORECASE)
         if directive:
             lines.append(re.sub(r"^[0-9]+(?:\s+|$)", "", directive.group(1) or ""))
@@ -115,13 +125,32 @@ def _raw_block_lines(block: BolioBlock, physical_lines: tuple[str, ...]) -> tupl
 
 
 def _block_spans(
-    block: BolioBlock, physical_lines: tuple[str, ...], variables: dict[str, str]
+    block: BolioBlock,
+    physical_lines: tuple[str, ...],
+    variables: dict[str, str],
+    *,
+    reference_text: str | None = None,
+    start_line: int | None = None,
+    end_line: int | None = None,
 ) -> tuple[SemanticTextSpan, ...]:
-    text = _printed_text(block)
+    text = reference_text if reference_text is not None else _printed_text(block)
     if block.kind == "list-item":
         return (SemanticTextSpan(text, "list-item-label", "directive-table-item"),)
     kind = block.kind
-    raw_lines = _raw_block_lines(block, physical_lines) if kind in {"body", "code"} else ()
+    raw_lines = (
+        _raw_block_lines(
+            block,
+            physical_lines,
+            start_line=start_line,
+            end_line=end_line,
+        )
+        if kind in {"body", "code"}
+        else ()
+    )
+    if kind == "code" and raw_lines:
+        dedented = textwrap.dedent("\n".join(raw_lines))
+        raw_lines = tuple(dedented.split("\n"))
+        text = textwrap.dedent(text)
     return semantic_spans(
         kind=kind,
         reference_text=text,
@@ -142,7 +171,7 @@ def _structural_prefix(
     raw = physical_lines[block.span.start_line - 1].lstrip().lower()
     chapter_number, section_offset = structure
     if raw.startswith(".chapter"):
-        return str(chapter_number)
+        return f"{chapter_number}."
     if not raw.startswith(".section"):
         return None
     section_index = sum(
@@ -153,6 +182,46 @@ def _structural_prefix(
         and physical_lines[candidate.span.start_line - 1].lstrip().lower().startswith(".section")
     )
     return f"{chapter_number}.{section_offset + section_index}"
+
+
+def _inside_definition(physical_lines: tuple[str, ...], line_number: int) -> bool:
+    depth = 0
+    for raw_line in physical_lines[:line_number]:
+        directive = raw_line.lstrip().lower()
+        if directive.startswith((".defun ", ".defspec ")):
+            depth += 1
+        elif directive.startswith((".end_defun", ".end_defspec")):
+            depth = max(0, depth - 1)
+    return depth > 0
+
+
+def _indent_code_spans(
+    spans: tuple[SemanticTextSpan, ...], *, spaces: int = 6
+) -> tuple[SemanticTextSpan, ...]:
+    prefix = " " * spaces
+    indented: list[SemanticTextSpan] = [
+        SemanticTextSpan(prefix, "display-code", "typesetter-.lisp-left-inset")
+    ]
+    for span in spans:
+        pieces = span.text.split("\n")
+        for index, piece in enumerate(pieces):
+            if index:
+                indented.append(SemanticTextSpan("\n", span.style, span.evidence, span.bold))
+                indented.append(
+                    SemanticTextSpan(prefix, "display-code", "typesetter-.lisp-left-inset")
+                )
+            if piece:
+                indented.append(SemanticTextSpan(piece, span.style, span.evidence, span.bold))
+    return tuple(indented)
+
+
+def _indent_first_line_spans(
+    spans: tuple[SemanticTextSpan, ...], *, spaces: int = 9
+) -> tuple[SemanticTextSpan, ...]:
+    return (
+        SemanticTextSpan(" " * spaces, "body", "typesetter-paragraph-first-line-indent"),
+        *spans,
+    )
 
 
 def _select_source_slice(
@@ -188,6 +257,138 @@ def _select_source_slice(
     return selected, tuple(clipped)
 
 
+def _table_rows(
+    spans: tuple[SemanticTextSpan, ...],
+) -> tuple[tuple[tuple[SemanticTextSpan, ...], tuple[SemanticTextSpan, ...]], ...]:
+    rows: list[tuple[list[SemanticTextSpan], list[SemanticTextSpan]]] = []
+    current: tuple[list[SemanticTextSpan], list[SemanticTextSpan]] | None = None
+    in_body = False
+    for span in spans:
+        if span.evidence == "directive-table-item":
+            current = ([span], [])
+            rows.append(current)
+            in_body = False
+            continue
+        if current is None:
+            continue
+        if span.evidence == "semantic-block-boundary":
+            if span.text == "  ":
+                in_body = True
+            continue
+        target = current[1] if in_body else current[0]
+        target.append(span)
+    normalized = tuple((tuple(label), tuple(body)) for label, body in rows if label and body)
+    if any(span.style == "display-code" for _, body in normalized for span in body):
+        return ()
+    return normalized
+
+
+def _expand_table_interval(extraction: BolioExtraction, start: int, end: int) -> tuple[int, int]:
+    for index, block in enumerate(extraction.blocks):
+        if block.kind != "body" or block.span.start_line != start or index == 0:
+            continue
+        previous = extraction.blocks[index - 1]
+        if previous.kind == "list-item" and previous.span.end_line == start - 1:
+            return previous.span.start_line, end
+        break
+    return start, end
+
+
+def _mixed_table_code_layouts(
+    extraction: BolioExtraction,
+    source_text: str,
+    start: int,
+    end: int,
+    bbox: tuple[int, int, int, int],
+    layout_config: NativeLayoutConfig,
+) -> list[NativeRegionLayout]:
+    """Lay out a final table row followed by exdented Lisp examples.
+
+    Bolio uses ``.exdent`` inside ``.lisp`` to move a prose label back to the
+    body margin while keeping the following forms at the code/table inset.
+    A single Pango paragraph cannot represent those two horizontal anchors, so
+    preserve the source instruction as three independently positioned parts.
+    """
+
+    blocks = tuple(
+        block
+        for block in extraction.blocks
+        if block.span.end_line >= start and block.span.start_line <= end
+    )
+    if tuple(block.kind for block in blocks) != ("list-item", "body", "code"):
+        return []
+    physical_lines = tuple(source_text.split("\n"))
+    code = blocks[-1]
+    exdent_lines = [
+        line_number
+        for line_number in range(max(start, code.span.start_line), min(end, code.span.end_line) + 1)
+        if re.fullmatch(
+            r"\.exdent(?:[ \t]+(.*))?", physical_lines[line_number - 1], flags=re.IGNORECASE
+        )
+    ]
+    if len(exdent_lines) != 1 or exdent_lines[0] >= min(end, code.span.end_line):
+        return []
+    exdent_line = exdent_lines[0]
+    match = re.fullmatch(
+        r"\.exdent(?:[ \t]+(.*))?", physical_lines[exdent_line - 1], flags=re.IGNORECASE
+    )
+    assert match is not None
+    label_text = re.sub(r"^[0-9]+(?:\s+|$)", "", match.group(1) or "")
+
+    table_label = _block_spans(blocks[0], physical_lines, dict(extraction.variables))
+    table_body = _block_spans(blocks[1], physical_lines, dict(extraction.variables))
+    code_text = render_bolio_interval(
+        extraction, source_text, start_line=exdent_line + 1, end_line=min(end, code.span.end_line)
+    )
+    code_spans = _block_spans(
+        code,
+        physical_lines,
+        dict(extraction.variables),
+        reference_text=code_text,
+        start_line=exdent_line + 1,
+        end_line=min(end, code.span.end_line),
+    )
+
+    x1, y1, x2, y2 = bbox
+    height = y2 - y1
+    table_y2 = round(y1 + height * 0.20)
+    label_y2 = round(y1 + height * 0.39)
+    label_width = 80
+    # The region begins at the exdented body margin.  The table row and Lisp
+    # forms retain the 38-point (154 scan-pixel) inset visible in the source.
+    inset_x = x1 + 154
+    return [
+        layout_native_region(
+            kind="body",
+            spans=table_label,
+            bbox=(inset_x, y1, inset_x + label_width, table_y2),
+            first_line_indent=False,
+            config=layout_config,
+        ),
+        layout_native_region(
+            kind="body",
+            spans=table_body,
+            bbox=(inset_x + label_width, y1, x2, table_y2),
+            first_line_indent=False,
+            config=layout_config,
+        ),
+        layout_native_region(
+            kind="body",
+            spans=(SemanticTextSpan(label_text, "body", "directive-.exdent"),),
+            bbox=(x1, table_y2, x2, label_y2),
+            first_line_indent=False,
+            config=layout_config,
+        ),
+        layout_native_region(
+            kind="code",
+            spans=code_spans,
+            bbox=(inset_x, label_y2, x2, y2),
+            first_line_indent=False,
+            config=layout_config,
+        ),
+    ]
+
+
 def _region_source(
     source_path: str,
     extraction: BolioExtraction,
@@ -196,13 +397,12 @@ def _region_source(
     end: int,
     region_locator: str,
 ) -> tuple[str, tuple[SemanticTextSpan, ...], str, bool]:
-    canonical = render_bolio_interval(extraction, source_text, start_line=start, end_line=end)
     blocks = tuple(
         block
         for block in extraction.blocks
         if block.span.end_line >= start and block.span.start_line <= end
     )
-    if not canonical or not blocks:
+    if not blocks:
         raise ValueError(f"source interval {start}-{end} has no canonical content")
     physical_lines = tuple(source_text.split("\n"))
     if region_locator.casefold() == "special form" and any(
@@ -215,57 +415,114 @@ def _region_source(
             "body",
             False,
         )
-    spans: list[SemanticTextSpan] = []
-    complete = all(
-        start <= block.span.start_line and block.span.end_line <= end for block in blocks
+    region_lines = physical_lines[start - 1 : end]
+    exdent_matches = tuple(
+        re.fullmatch(r"\.exdent(?:[ \t]+(.*))?", line, flags=re.IGNORECASE) for line in region_lines
     )
+    if exdent_matches and all(match is not None for match in exdent_matches):
+        visible = "\n".join(
+            re.sub(r"^[0-9]+(?:\s+|$)", "", match.group(1) or "")
+            for match in exdent_matches
+            if match is not None
+        )
+        return (
+            visible,
+            (SemanticTextSpan(visible, "body", "directive-.exdent"),),
+            "body",
+            False,
+        )
     table_sequence = len(blocks) > 1 and any(block.kind == "list-item" for block in blocks)
-    compact_sequence = len(blocks) > 1 and any(
-        block.kind in {"function", "code"} for block in blocks
-    )
-    if complete:
-        previous_block: BolioBlock | None = None
-        for block in blocks:
-            if spans:
-                separator = (
-                    "  "
-                    if previous_block is not None and previous_block.kind == "list-item"
-                    else "\n"
-                    if table_sequence
-                    or (
-                        previous_block is not None
-                        and (
-                            previous_block.kind in {"function", "code"}
-                            or block.kind in {"function", "code"}
-                        )
+    mixed_code = len(blocks) > 1 and any(block.kind == "code" for block in blocks)
+
+    def separator(previous: BolioBlock, current: BolioBlock) -> str:
+        if previous.kind == "list-item":
+            return "  "
+        if (
+            table_sequence
+            or previous.kind in {"function", "code"}
+            or current.kind
+            in {
+                "function",
+                "code",
+            }
+        ):
+            return "\n"
+        return "\n\n"
+
+    groups: list[tuple[BolioBlock, tuple[SemanticTextSpan, ...]]] = []
+    for block in blocks:
+        overlap_start = max(start, block.span.start_line)
+        overlap_end = min(end, block.span.end_line)
+        block_text = render_bolio_interval(
+            extraction,
+            source_text,
+            start_line=overlap_start,
+            end_line=overlap_end,
+        )
+        block_spans = list(
+            _block_spans(
+                block,
+                physical_lines,
+                dict(extraction.variables),
+                reference_text=block_text,
+                start_line=overlap_start,
+                end_line=overlap_end,
+            )
+        )
+        prefix = _structural_prefix(source_path, block, extraction, physical_lines)
+        if prefix is not None:
+            block_spans.insert(
+                0,
+                SemanticTextSpan(f"{prefix} ", "section-title", "typesetter-counter-derived"),
+            )
+        groups.append((block, tuple(block_spans)))
+
+    source_spans: list[SemanticTextSpan] = []
+    for index, (block, block_spans) in enumerate(groups):
+        if index:
+            source_spans.append(
+                SemanticTextSpan(
+                    separator(groups[index - 1][0], block),
+                    "body",
+                    "semantic-block-boundary",
+                )
+            )
+        source_spans.extend(block_spans)
+    canonical = "".join(span.text for span in source_spans)
+    canonical, selected_spans = _select_source_slice(canonical, tuple(source_spans), region_locator)
+
+    display_spans = selected_spans
+    if canonical == "".join(span.text for span in source_spans) and (mixed_code or len(groups) > 1):
+        rebuilt: list[SemanticTextSpan] = []
+        for index, (block, block_spans) in enumerate(groups):
+            if index:
+                rebuilt.append(
+                    SemanticTextSpan(
+                        separator(groups[index - 1][0], block),
+                        "body",
+                        "semantic-block-boundary",
                     )
-                    else "\n\n"
                 )
-                spans.append(SemanticTextSpan(separator, "body", "semantic-block-boundary"))
-            block_spans = list(_block_spans(block, physical_lines, dict(extraction.variables)))
-            prefix = _structural_prefix(source_path, block, extraction, physical_lines)
-            if prefix is not None:
-                canonical = f"{prefix} {canonical}"
-                block_spans.insert(
-                    0,
-                    SemanticTextSpan(f"{prefix} ", "section-title", "typesetter-counter-derived"),
+            if mixed_code and block.kind == "code":
+                rebuilt.extend(_indent_code_spans(block_spans))
+            elif len(groups) > 1 and block.kind == "body" and not table_sequence:
+                inside_definition = _inside_definition(physical_lines, block.span.start_line)
+                rebuilt.extend(
+                    _indent_first_line_spans(block_spans, spaces=6 if inside_definition else 9)
                 )
-            spans.extend(block_spans)
-            previous_block = block
-    else:
-        style = "display-code" if all(block.kind == "code" for block in blocks) else "body"
-        spans.append(SemanticTextSpan(canonical, style, "source-line-interval"))
-    if table_sequence or compact_sequence:
-        canonical = "".join(span.text for span in spans)
-    elif "".join(span.text for span in spans) != canonical:
-        spans = [SemanticTextSpan(canonical, "body", "source-line-interval")]
-    canonical, selected_spans = _select_source_slice(canonical, tuple(spans), region_locator)
-    spans = list(selected_spans)
+            else:
+                rebuilt.extend(block_spans)
+        display_spans = tuple(rebuilt)
+
     kinds = {block.kind for block in blocks}
     sole_kind = next(iter(kinds)) if len(kinds) == 1 else None
     kind = sole_kind if sole_kind is not None and sole_kind != "list-item" else "body"
-    paragraph_indent = len(blocks) == 1 and blocks[0].paragraph_indent
-    return canonical, tuple(spans), kind, paragraph_indent
+    paragraph_indent = (
+        len(blocks) == 1
+        and blocks[0].kind == "body"
+        and not _inside_definition(physical_lines, blocks[0].span.start_line)
+    )
+    return canonical, display_spans, kind, paragraph_indent
 
 
 def _find_unmatched_source(
@@ -396,29 +653,88 @@ def main() -> int:
                     str(region["ocr_text"]), candidates, previous_end, next_start
                 )
             extraction, source_text = source(path)
-            canonical, spans, kind, paragraph_indent = _region_source(
-                path,
-                extraction,
-                source_text,
-                int(start),
-                int(end),
-                str(region["ocr_text"]),
-            )
-            bbox = tuple(round(float(value)) for value in region["bbox"])
+            start, end = _expand_table_interval(extraction, int(start), int(end))
             try:
-                layout = layout_native_region(
-                    kind=kind,
-                    spans=spans,
-                    bbox=bbox,  # type: ignore[arg-type]
-                    first_line_indent=paragraph_indent,
-                    config=layout_config,
+                canonical, spans, kind, paragraph_indent = _region_source(
+                    path,
+                    extraction,
+                    source_text,
+                    start,
+                    end,
+                    str(region["ocr_text"]),
                 )
             except ValueError as error:
                 region_id = str(region["alignment"]["region_id"])
                 raise ValueError(
                     f"page {page_number} region {region_id} ({path}:{start}-{end}): {error}"
                 ) from error
-            layouts.append(layout)
+            bbox = tuple(round(float(value)) for value in region["bbox"])
+            table_rows = _table_rows(spans)
+            try:
+                mixed_layouts = _mixed_table_code_layouts(
+                    extraction,
+                    source_text,
+                    start,
+                    end,
+                    bbox,  # type: ignore[arg-type]
+                    layout_config,
+                )
+                if mixed_layouts:
+                    region_layouts = mixed_layouts
+                elif table_rows:
+                    x1, y1, x2, y2 = bbox
+                    label_width = round(min(500.0, max(80.0, (x2 - x1) * 0.26)))
+                    body_width = max(1, x2 - x1 - label_width)
+                    characters_per_line = max(1, round(body_width / 22.0))
+                    row_weights = [
+                        max(
+                            1,
+                            (sum(len(span.text) for span in body_spans) + characters_per_line - 1)
+                            // characters_per_line,
+                        )
+                        for _, body_spans in table_rows
+                    ]
+                    total_weight = sum(row_weights)
+                    region_layouts: list[NativeRegionLayout] = []
+                    elapsed_weight = 0
+                    for row_index, (label_spans, body_spans) in enumerate(table_rows):
+                        row_y1 = round(y1 + (y2 - y1) * elapsed_weight / total_weight)
+                        elapsed_weight += row_weights[row_index]
+                        row_y2 = round(y1 + (y2 - y1) * elapsed_weight / total_weight)
+                        region_layouts.extend(
+                            (
+                                layout_native_region(
+                                    kind="body",
+                                    spans=label_spans,
+                                    bbox=(x1, row_y1, x1 + label_width, row_y2),
+                                    first_line_indent=False,
+                                    config=layout_config,
+                                ),
+                                layout_native_region(
+                                    kind="body",
+                                    spans=body_spans,
+                                    bbox=(x1 + label_width, row_y1, x2, row_y2),
+                                    first_line_indent=False,
+                                    config=layout_config,
+                                ),
+                            )
+                        )
+                else:
+                    region_layouts = [
+                        layout_native_region(
+                            kind=kind,
+                            spans=spans,
+                            bbox=bbox,  # type: ignore[arg-type]
+                            first_line_indent=paragraph_indent,
+                            config=layout_config,
+                        )
+                    ]
+            except ValueError as error:
+                region_id = str(region["alignment"]["region_id"])
+                raise ValueError(
+                    f"page {page_number} region {region_id} ({path}:{start}-{end}): {error}"
+                ) from error
+            layouts.extend(region_layouts)
             box = _normalized_box(region["bbox"])
             review_regions.append(
                 {
@@ -435,7 +751,16 @@ def main() -> int:
             region_manifest.append(
                 {
                     "bbox": list(bbox),
-                    "font_size": layout.font_size,
+                    "font_size": min(layout.font_size for layout in region_layouts),
+                    "font_descriptions": sorted(
+                        {
+                            str(run["description"])
+                            for layout in region_layouts
+                            for run in layout.font_runs
+                            if "description" in run
+                        }
+                    ),
+                    "layout_parts": len(region_layouts),
                     "kind": kind,
                     "region_id": str(region["alignment"]["region_id"]),
                     "source_path": path,

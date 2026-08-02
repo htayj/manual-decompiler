@@ -196,6 +196,15 @@ Second paragraph must be excluded.
     assert rendered == "First physical source line continues here."
 
 
+def test_partial_code_interval_preserves_internal_blank_lines() -> None:
+    source = ".lisp\nlabel\n  (first)\n\n    (second)\n.end_lisp\n"
+    extraction = extract_bolio(source, VARS)
+
+    rendered = render_bolio_interval(extraction, source, start_line=3, end_line=5)
+
+    assert rendered == "  (first)\n\n    (second)"
+
+
 def test_multiline_code_formatting_spans_preserve_literal_newlines() -> None:
     spans = semantic_spans(
         kind="code",
@@ -205,6 +214,7 @@ def test_multiline_code_formatting_spans_preserve_literal_newlines() -> None:
     )
 
     assert "".join(span.text for span in spans) == "(first)\n  (second sym)"
+    assert spans[0].style == "display-code"
     assert next(span for span in spans if span.text == "sym").style == "font-2-italic"
 
 

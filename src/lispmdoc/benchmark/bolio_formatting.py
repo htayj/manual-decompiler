@@ -57,10 +57,11 @@ def _inline_spans(
     variables: Mapping[str, str],
     fallback: str,
     *,
+    initial_style: str,
     line_separator: str,
 ) -> tuple[SemanticTextSpan, ...]:
     spans: list[SemanticTextSpan] = []
-    style = "body"
+    style = initial_style
     evidence = "source-default-font-1"
     font_stack: list[tuple[str, str]] = []
     bold = False
@@ -183,14 +184,26 @@ def semantic_spans(
         )
     elif kind == "code":
         spans = (
-            _inline_spans(raw_lines, variables, reference_text, line_separator="\n")
+            _inline_spans(
+                raw_lines,
+                variables,
+                reference_text,
+                initial_style="display-code",
+                line_separator="\n",
+            )
             if raw_lines
             else (SemanticTextSpan(reference_text, "display-code", "directive-.lisp"),)
         )
     elif kind == "section":
         spans = (SemanticTextSpan(reference_text, "section-title", "directive-.section"),)
     elif kind == "body":
-        spans = _inline_spans(raw_lines, variables, reference_text, line_separator=" ")
+        spans = _inline_spans(
+            raw_lines,
+            variables,
+            reference_text,
+            initial_style="body",
+            line_separator=" ",
+        )
     else:
         raise BolioSyntaxError(f"unsupported semantic block kind {kind!r}")
 

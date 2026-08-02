@@ -127,11 +127,15 @@ def test_explicit_italic_selector_overrides_display_code_base_face() -> None:
     )
 
     assert [(run.text, run.style) for run in runs] == [
-        ("(fsymeval ", "body"),
+        ("(fsymeval ", "display-code"),
         ("sym", "font-2-italic"),
-        (")", "body"),
+        (")", "display-code"),
     ]
-    assert pilot._physical_style("body", "code") == ("Liberation Mono", "normal", 400)
+    assert pilot._physical_style("display-code", "code") == (
+        "Liberation Mono",
+        "normal",
+        400,
+    )
     assert pilot._physical_style("font-2-italic", "code") == (
         "Liberation Serif",
         "italic",

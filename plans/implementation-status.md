@@ -260,11 +260,27 @@ The source, variables, proposal, layout, PDF, font, scan, replica, and region
 text digests are retained in the ignored replica manifest. This is now ready
 for independent layout review; it is not replacement-ready.
 
+Feedback on the first two replica pages is now implemented as source-driven
+layout behavior rather than word-specific corrections. Standalone and
+definition-local paragraphs use distinct first-line indents; Lisp displays use
+the code face, preserve source indentation, and keep adjacent prose compact;
+table items retain label/body columns; `.exdent` creates an independent prose
+anchor; and chapter punctuation and special-form typography come from
+typesetter semantics. The same rules were applied across all 20 pages. A
+scan/replica vision pass inspected all 269 region crops and caught one mixed
+table/exdented-code region that the initial sampled review missed. That region
+is now decomposed into four source-evidenced layouts, with a regression test
+that refuses the decomposition unless the `.exdent` instruction is present.
+Two clean r24/r25 builds are byte-identical; the current review-project
+SHA-256 is `3d11bd242c76463c68f5bc6e0f6f8854ee0fee4379362edc17f7f5519e7adb8a`.
+The earlier accepted one-page pilot SVG remains byte-identical at SHA-256
+`850b3ffe02bb7a18e34e2b8d09b635a5fa97d6658b17e6233fbd34581c25e893`.
+
 ## Current automated verification
 
 ```text
 uv run pytest -q
-237 passed
+240 passed
 
 uv run ruff check .
 All checks passed
@@ -279,9 +295,10 @@ tracked working tree clean after the recorded commit
 ## Not yet implemented
 
 - Representative English benchmark corpus. One recovered-source scan page is
-  authoritative-ready and a 20-page expansion has accepted source mapping and
-  a replica draft; the expansion still needs independent layout review and
-  scored evaluation.
+  authoritative-ready and a 20-page expansion has accepted source mapping, a
+  replica draft, first-two-page feedback, and a complete machine-vision region
+  pass; the expansion still needs completion of independent human layout
+  review and scored evaluation.
 - Evidence-backed OCR engine selection by page class.
 - Automatic integration of preprocessing proposals into conversion. The
   foundation supports conservative deskew/border operations and explicit
@@ -301,6 +318,7 @@ tracked working tree clean after the recorded commit
   clean-environment reproducibility checks.
 - Replacement-ready conformance.
 
-The next implementation milestone is independent review and measured
-evaluation of the 20-page source-backed replica slice. A corpus-wide OCR run
-should not happen before a representative English benchmark exists.
+The next implementation milestone is confirmation of the corrected first two
+pages followed by completion of independent review and measured evaluation of
+the 20-page source-backed replica slice. A corpus-wide OCR run should not
+happen before a representative English benchmark exists.

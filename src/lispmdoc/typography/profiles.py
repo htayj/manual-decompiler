@@ -13,12 +13,13 @@ CHINUAL_MONO_FONT = "Liberation Mono"
 CHINUAL_4E_LAYOUT = NativeLayoutConfig(
     default_style=PhysicalTextStyle(CHINUAL_SERIF_FONT),
     semantic_styles={
+        "body": PhysicalTextStyle(CHINUAL_SERIF_FONT),
         "display-code": PhysicalTextStyle(CHINUAL_MONO_FONT),
         "font-2-italic": PhysicalTextStyle(CHINUAL_SERIF_FONT, "italic"),
         "font-3-inline-lisp": PhysicalTextStyle(CHINUAL_SANS_FONT),
         "definition-name": PhysicalTextStyle(CHINUAL_MONO_FONT, weight=700),
         "definition-argument": PhysicalTextStyle(CHINUAL_SERIF_FONT, "italic"),
-        "definition-label": PhysicalTextStyle(CHINUAL_SANS_FONT),
+        "definition-label": PhysicalTextStyle(CHINUAL_SERIF_FONT, "italic"),
         "list-item-label": PhysicalTextStyle(CHINUAL_MONO_FONT, weight=700),
         "section-title": PhysicalTextStyle(CHINUAL_SERIF_FONT, weight=700),
     },
