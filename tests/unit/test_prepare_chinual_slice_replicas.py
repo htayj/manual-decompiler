@@ -82,3 +82,58 @@ x > 0
         )
         == []
     )
+
+
+def test_partial_body_interval_does_not_invent_a_new_paragraph_indent() -> None:
+    replica = _replica_module()
+    source = "First physical line of one paragraph.\nContinuation on the next page.\n"
+    extraction = extract_bolio(source, {})
+
+    canonical, spans, kind, paragraph_indent = replica._region_source(
+        "example.1",
+        extraction,
+        source,
+        2,
+        2,
+        "Continuation on the next page.",
+    )
+
+    assert canonical == "Continuation on the next page."
+    assert "".join(span.text for span in spans) == canonical
+    assert kind == "body"
+    assert not paragraph_indent
+
+
+def test_definition_flow_uses_a_persistent_body_inset_for_wrapped_lines() -> None:
+    replica = _replica_module()
+    source = """.defun less-or-equal x y
+less-or-equal compares its arguments from left to right.  If an argument is greater
+than the next, it returns nil.  Otherwise the result is t.
+.end_defun
+"""
+    extraction = extract_bolio(source, {})
+
+    layouts = replica._definition_flow_layouts(
+        extraction,
+        source,
+        1,
+        3,
+        (275, 452, 2173, 900),
+        CHINUAL_4E_LAYOUT,
+    )
+
+    assert len(layouts) == 2
+    heading, body = layouts
+    assert body.line_count == 2
+    assert body.origin[0] - heading.origin[0] == pytest.approx(154, abs=1)
+    assert not any(
+        span.evidence == "typesetter-paragraph-first-line-indent" for span in body.spans
+    )
+
+
+def test_table_scope_is_derived_from_source_directives() -> None:
+    replica = _replica_module()
+    lines = (".table 3", ".kitem :constructor", "body", ".end_table", "after")
+
+    assert replica._inside_table(lines, 3)
+    assert not replica._inside_table(lines, 5)

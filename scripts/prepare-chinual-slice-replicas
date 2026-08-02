@@ -195,6 +195,17 @@ def _inside_definition(physical_lines: tuple[str, ...], line_number: int) -> boo
     return depth > 0
 
 
+def _inside_table(physical_lines: tuple[str, ...], line_number: int) -> bool:
+    depth = 0
+    for raw_line in physical_lines[:line_number]:
+        directive = raw_line.lstrip().lower()
+        if directive.startswith(".table"):
+            depth += 1
+        elif directive.startswith(".end_table"):
+            depth = max(0, depth - 1)
+    return depth > 0
+
+
 def _indent_code_spans(
     spans: tuple[SemanticTextSpan, ...], *, spaces: int = 6
 ) -> tuple[SemanticTextSpan, ...]:
@@ -389,6 +400,187 @@ def _mixed_table_code_layouts(
     ]
 
 
+def _shift_layout(layout: NativeRegionLayout, y: float) -> NativeRegionLayout:
+    delta = y - layout.origin[1]
+    generated = layout.generated_bbox
+    return replace(
+        layout,
+        origin=(layout.origin[0], y),
+        generated_bbox=(generated[0], generated[1] + delta, generated[2], generated[3] + delta),
+    )
+
+
+def _definition_flow_layouts(
+    extraction: BolioExtraction,
+    source_text: str,
+    start: int,
+    end: int,
+    bbox: tuple[int, int, int, int],
+    layout_config: NativeLayoutConfig,
+) -> list[NativeRegionLayout]:
+    """Shape each block in a compact definition sequence at its semantic inset."""
+
+    blocks = tuple(
+        block
+        for block in extraction.blocks
+        if block.span.end_line >= start and block.span.start_line <= end
+    )
+    if len(blocks) < 2 or any(block.kind == "list-item" for block in blocks):
+        return []
+    physical_lines = tuple(source_text.split("\n"))
+    if not all(
+        block.kind == "function" or _inside_definition(physical_lines, block.span.start_line)
+        for block in blocks
+    ):
+        return []
+
+    x1, y1, x2, y2 = bbox
+    definition_inset = 154
+    body_inset = definition_inset if any(block.kind == "function" for block in blocks) else 0
+    specifications: list[
+        tuple[str, tuple[SemanticTextSpan, ...], int, int, int, bool]
+    ] = []
+    for block in blocks:
+        overlap_start = max(start, block.span.start_line)
+        overlap_end = min(end, block.span.end_line)
+        if block.kind != "code":
+            block_text = render_bolio_interval(
+                extraction,
+                source_text,
+                start_line=overlap_start,
+                end_line=overlap_end,
+            )
+            specifications.append(
+                (
+                    block.kind,
+                    _block_spans(
+                        block,
+                        physical_lines,
+                        dict(extraction.variables),
+                        reference_text=block_text,
+                        start_line=overlap_start,
+                        end_line=overlap_end,
+                    ),
+                    x1 if block.kind == "function" else x1 + body_inset,
+                    overlap_start,
+                    overlap_end,
+                    False,
+                )
+            )
+            continue
+
+        exdent_lines = [
+            line_number
+            for line_number in range(overlap_start, overlap_end + 1)
+            if re.fullmatch(
+                r"\.exdent(?:[ \t]+(.*))?",
+                physical_lines[line_number - 1],
+                flags=re.IGNORECASE,
+            )
+        ]
+        if len(exdent_lines) != 1:
+            block_text = render_bolio_interval(
+                extraction,
+                source_text,
+                start_line=overlap_start,
+                end_line=overlap_end,
+            )
+            specifications.append(
+                (
+                    "code",
+                    _block_spans(
+                        block,
+                        physical_lines,
+                        dict(extraction.variables),
+                        reference_text=block_text,
+                        start_line=overlap_start,
+                        end_line=overlap_end,
+                    ),
+                    x1 + definition_inset,
+                    overlap_start,
+                    overlap_end,
+                    False,
+                )
+            )
+            continue
+
+        exdent_line = exdent_lines[0]
+        match = re.fullmatch(
+            r"\.exdent(?:[ \t]+(.*))?",
+            physical_lines[exdent_line - 1],
+            flags=re.IGNORECASE,
+        )
+        assert match is not None
+        label_text = re.sub(r"^[0-9]+(?:\s+|$)", "", match.group(1) or "")
+        specifications.append(
+            (
+                "body",
+                (SemanticTextSpan(label_text, "body", "directive-.exdent"),),
+                x1 + body_inset,
+                exdent_line,
+                exdent_line,
+                False,
+            )
+        )
+        if exdent_line < overlap_end:
+            code_text = render_bolio_interval(
+                extraction,
+                source_text,
+                start_line=exdent_line + 1,
+                end_line=overlap_end,
+            )
+            specifications.append(
+                (
+                    "code",
+                    _block_spans(
+                        block,
+                        physical_lines,
+                        dict(extraction.variables),
+                        reference_text=code_text,
+                        start_line=exdent_line + 1,
+                        end_line=overlap_end,
+                    ),
+                    x1 + body_inset + definition_inset,
+                    exdent_line + 1,
+                    overlap_end,
+                    True,
+                )
+            )
+
+    probes = [
+        layout_native_region(
+            kind=kind,
+            spans=spans,
+            bbox=(part_x, 0, x2, y2 - y1),
+            first_line_indent=False,
+            config=layout_config,
+        )
+        for kind, spans, part_x, _, _, _ in specifications
+    ]
+    gap_height = min(layout.line_height for layout in probes)
+    gaps = [0.0]
+    for previous, current in zip(specifications, specifications[1:], strict=False):
+        between = physical_lines[previous[4] : current[3] - 1]
+        new_definition = previous[0] != "function" and current[0] == "function"
+        has_blank_line = any(not line.strip() for line in between)
+        gaps.append(gap_height if new_definition and has_blank_line else 0.0)
+    natural_height = sum(layout.generated_bbox[3] for layout in probes) + sum(gaps)
+    if natural_height > y2 - y1 + 0.5:
+        gaps = [0.0 for _ in gaps]
+        natural_height = sum(layout.generated_bbox[3] for layout in probes)
+    if natural_height > y2 - y1 + 0.5:
+        return []
+
+    result: list[NativeRegionLayout] = []
+    cursor = float(y1)
+    for layout, gap in zip(probes, gaps, strict=True):
+        cursor += gap
+        shifted = _shift_layout(layout, cursor)
+        result.append(shifted)
+        cursor = shifted.generated_bbox[3]
+    return result
+
+
 def _region_source(
     source_path: str,
     extraction: BolioExtraction,
@@ -520,6 +712,7 @@ def _region_source(
     paragraph_indent = (
         len(blocks) == 1
         and blocks[0].kind == "body"
+        and start == blocks[0].span.start_line
         and not _inside_definition(physical_lines, blocks[0].span.start_line)
     )
     return canonical, display_spans, kind, paragraph_indent
@@ -669,6 +862,8 @@ def main() -> int:
                     f"page {page_number} region {region_id} ({path}:{start}-{end}): {error}"
                 ) from error
             bbox = tuple(round(float(value)) for value in region["bbox"])
+            physical_lines = tuple(source_text.split("\n"))
+            table_body_inset = 10 if _inside_table(physical_lines, start) else 0
             table_rows = _table_rows(spans)
             try:
                 mixed_layouts = _mixed_table_code_layouts(
@@ -679,8 +874,18 @@ def main() -> int:
                     bbox,  # type: ignore[arg-type]
                     layout_config,
                 )
+                definition_layouts = _definition_flow_layouts(
+                    extraction,
+                    source_text,
+                    start,
+                    end,
+                    bbox,  # type: ignore[arg-type]
+                    layout_config,
+                )
                 if mixed_layouts:
                     region_layouts = mixed_layouts
+                elif definition_layouts:
+                    region_layouts = definition_layouts
                 elif table_rows:
                     x1, y1, x2, y2 = bbox
                     label_width = round(min(500.0, max(80.0, (x2 - x1) * 0.26)))
@@ -713,7 +918,12 @@ def main() -> int:
                                 layout_native_region(
                                     kind="body",
                                     spans=body_spans,
-                                    bbox=(x1 + label_width, row_y1, x2, row_y2),
+                                    bbox=(
+                                        x1 + label_width + table_body_inset,
+                                        row_y1,
+                                        x2,
+                                        row_y2,
+                                    ),
                                     first_line_indent=False,
                                     config=layout_config,
                                 ),
@@ -724,7 +934,12 @@ def main() -> int:
                         layout_native_region(
                             kind=kind,
                             spans=spans,
-                            bbox=bbox,  # type: ignore[arg-type]
+                            bbox=(
+                                bbox[0] + table_body_inset,
+                                bbox[1],
+                                bbox[2],
+                                bbox[3],
+                            ),
                             first_line_indent=paragraph_indent,
                             config=layout_config,
                         )

@@ -276,11 +276,24 @@ SHA-256 is `3d11bd242c76463c68f5bc6e0f6f8854ee0fee4379362edc17f7f5519e7adb8a`.
 The earlier accepted one-page pilot SVG remains byte-identical at SHA-256
 `850b3ffe02bb7a18e34e2b8d09b635a5fa97d6658b17e6233fbd34581c25e893`.
 
+The subsequent human pass accepted pages 91 and 92 and most of the remaining
+slice, while identifying page-continuation and persistent-inset failures on
+pages 93 through 95, 105, and 108. These are now structural rules: partial
+body intervals cannot invent a paragraph indent; prose inside an open table
+uses the measured table-body inset; and compact definition flows are shaped as
+independent semantic blocks so wrapped lines retain the same inset as their
+first line. Exdented labels and Lisp forms remain separate source-evidenced
+anchors. An audit found exactly three partial body regions in the slice, all at
+the reviewed page/table boundaries, and the corrected rule covers all three.
+Vision comparison covered every changed page and region. Two clean r27/r28
+builds are byte-identical; the current full review-project SHA-256 is
+`162698b738b3ed0370f72d8c3433324b5da1d7f3f7fec4e4fb19e166e5ea0660`.
+
 ## Current automated verification
 
 ```text
 uv run pytest -q
-240 passed
+243 passed
 
 uv run ruff check .
 All checks passed
@@ -318,7 +331,7 @@ tracked working tree clean after the recorded commit
   clean-environment reproducibility checks.
 - Replacement-ready conformance.
 
-The next implementation milestone is confirmation of the corrected first two
-pages followed by completion of independent review and measured evaluation of
-the 20-page source-backed replica slice. A corpus-wide OCR run should not
-happen before a representative English benchmark exists.
+The next implementation milestone is focused confirmation of the six corrected
+regions followed by measured evaluation of the 20-page source-backed replica
+slice. A corpus-wide OCR run should not happen before a representative English
+benchmark exists.
