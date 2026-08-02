@@ -89,6 +89,7 @@ def test_scan_grounded_paragraph_layout_reflows_and_retains_first_line_indent() 
     assert layout.lines[0].runs[0].x == 393.72
     assert layout.lines[1].runs[0].x == 293.72
     assert layout.generated_bbox[0] == 293.72
+    assert layout.generated_bbox[2] <= 2188
     assert layout.generated_bbox[3] <= 1178
 
 
@@ -167,6 +168,7 @@ def test_r6_body_scale_fills_long_region_with_tighter_leading_and_section_is_tal
     assert body.line_height == 52.8
     assert len(body.lines) == 7
     assert body.generated_bbox[3] - body.generated_bbox[1] > 350
+    assert body.generated_bbox[2] <= 2183
     assert section.font_size == 53
     assert "monospace" in pilot._style_attributes("function")
     assert "font-weight=\"700\"" in pilot._style_attributes("function")

@@ -337,6 +337,7 @@ def layout_region(
     size = base_size
     lines: tuple[tuple[InlineRun, ...], ...] = ()
     for _ in range(24):
+        optical_inset = size * _OPTICAL_LEFT_INSET_FACTOR
         if kind == "code":
             code_text = "".join(run.text for run in runs)
             provisional = tuple(
@@ -344,12 +345,12 @@ def layout_region(
                 for line in code_text.split("\n")
             )
             width_fits = all(
-                sum(_run_width(run, size) for run in line) <= x2 - x1
+                sum(_run_width(run, size) for run in line) <= x2 - x1 - optical_inset
                 for line in provisional
             )
         else:
-            first_width = x2 - (x1 + indent)
-            normal_width = x2 - x1
+            first_width = x2 - (x1 + indent + optical_inset)
+            normal_width = x2 - x1 - optical_inset
             provisional = _wrap_runs(runs, first_width, size)
             if len(provisional) > 1 and indent:
                 remaining = _wrap_runs(
@@ -425,7 +426,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument(
-        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review-r6")
+        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review-r7")
     )
     args = parser.parse_args()
     root = args.project_root.resolve()
