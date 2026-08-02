@@ -312,15 +312,18 @@ def semantic_runs(
 
 
 def _physical_style(style: str, kind: str) -> tuple[str, str, int]:
+    # Explicit source selectors override the structural environment. Thus a
+    # ^F2 span inside .lisp is italic even though the surrounding display uses
+    # the fixed-width face.
+    if style in {"font-2-italic", "definition-argument"}:
+        return SERIF_FONT, "italic", 400
     if kind == "code":
         return MONO_FONT, "normal", 400
-    elif style == "font-3-inline-lisp":
+    if style == "font-3-inline-lisp":
         return SANS_FONT, "normal", 400
-    elif style in {"font-2-italic", "definition-argument"}:
-        return SERIF_FONT, "italic", 400
-    elif style == "definition-name":
+    if style == "definition-name":
         return MONO_FONT, "normal", 700
-    elif style == "section-title":
+    if style == "section-title":
         return SERIF_FONT, "normal", 700
     return SERIF_FONT, "normal", 400
 
@@ -467,7 +470,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument(
-        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review-r9")
+        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review-r10")
     )
     args = parser.parse_args()
     root = args.project_root.resolve()
@@ -779,9 +782,9 @@ def main() -> int:
     }
     _write_new(output / "review-project.json", _json_bytes(review_project))
     prior_annotations = (
-        root / "work/benchmark-pilot/authoritative-review-r8/review-project.annotations.json"
+        root / "work/benchmark-pilot/authoritative-review-r9/review-project.annotations.json"
     )
-    prior_project = root / "work/benchmark-pilot/authoritative-review-r8/review-project.json"
+    prior_project = root / "work/benchmark-pilot/authoritative-review-r9/review-project.json"
     if prior_annotations.is_file() and prior_project.is_file():
         _write_new(
             output / "prior-review-feedback.json",
@@ -789,7 +792,7 @@ def main() -> int:
                 {
                     "annotations": json.loads(prior_annotations.read_text(encoding="utf-8")),
                     "prior_review_project_sha256": _sha256(prior_project),
-                    "prior_review_revision": "r8",
+                    "prior_review_revision": "r9",
                     "status": "retained-separately; do-not-apply-to-new-revision",
                 }
             ),

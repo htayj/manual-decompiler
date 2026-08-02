@@ -117,6 +117,28 @@ def test_multiline_code_preserves_explicit_lines_and_leading_spaces() -> None:
     assert layout.font_size == 40
 
 
+def test_explicit_italic_selector_overrides_display_code_base_face() -> None:
+    pilot = _pilot_module()
+    runs = pilot.semantic_runs(
+        kind="code",
+        reference_text="(fsymeval sym)",
+        raw_lines=("(fsymeval \x062sym\x06*)",),
+        variables={},
+    )
+
+    assert [(run.text, run.style) for run in runs] == [
+        ("(fsymeval ", "body"),
+        ("sym", "font-2-italic"),
+        (")", "body"),
+    ]
+    assert pilot._physical_style("body", "code") == ("Liberation Mono", "normal", 400)
+    assert pilot._physical_style("font-2-italic", "code") == (
+        "Liberation Serif",
+        "italic",
+        400,
+    )
+
+
 def test_bolio_f3_keeps_selector_identity_and_maps_to_regular_sans() -> None:
     pilot = _pilot_module()
     runs = pilot.semantic_runs(
