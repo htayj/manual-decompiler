@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import json
+import tarfile
 from dataclasses import replace
 
 import pytest
@@ -18,9 +21,22 @@ from lispmdoc.benchmark import (
     TranscribedRegion,
     TranscriptionPackage,
     Wave1ContractError,
+    apply_review_annotations,
     hard_gate,
     stratified_measurements,
     validate_60_page_queue,
+)
+from lispmdoc.benchmark.authoritative import (
+    AUTHORITATIVE_TRUTH_VERSION,
+    AuthoritativeMaterial,
+    AuthoritativeRegionTruth,
+    AuthoritativeTruthPackage,
+    MappingAnchor,
+    MappingEvidence,
+    QueuePageBinding,
+    SourceSpan,
+    TextDerivation,
+    TypesetterSourceProvenance,
 )
 
 EXPECTED_RUN = ExpectedRunIdentity(
@@ -35,6 +51,65 @@ EXPECTED_RUN = ExpectedRunIdentity(
 
 def _digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _tar(path: str, content: bytes) -> bytes:
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w") as archive:
+        info = tarfile.TarInfo(path)
+        info.size = len(content)
+        info.mtime = 0
+        archive.addfile(info, io.BytesIO(content))
+    return output.getvalue()
+
+
+def _review(
+    package: AuthoritativeTruthPackage,
+) -> tuple[AuthoritativeTruthPackage, bytes, bytes, tuple[tuple[str, bytes], ...]]:
+    region = package.regions[0]
+    project = {
+        "assets": {
+            "generated": {"sha256": hashlib.sha256(b"generated").hexdigest()},
+            "scan": {"sha256": package.queue_page.render_sha256},
+        },
+        "format_version": "1.0",
+        "pages": [{
+            "generated_asset_id": "generated",
+            "id": package.queue_page.id,
+            "reference_asset_id": "scan",
+            "regions": [{
+                "canonical_text": region.literal_text,
+                "id": region.geometry.region_id,
+                "source_text": region.literal_text,
+            }],
+        }],
+    }
+    project_bytes = (json.dumps(project, sort_keys=True) + "\n").encode()
+    annotations = {
+        "annotations": {"pages": {package.queue_page.id: {
+            "disposition": "accept",
+            "regions": {region.geometry.region_id: {"disposition": "accept"}},
+        }}},
+        "format_version": "1.0",
+        "project_sha256": hashlib.sha256(project_bytes).hexdigest(),
+        "reviewer": "reviewer",
+    }
+    annotation_bytes = (json.dumps(annotations, sort_keys=True) + "\n").encode()
+    assets = (
+        ("generated", b"generated"),
+        ("scan", f"render-{package.queue_page.source_page_index}".encode()),
+    )
+    return (
+        apply_review_annotations(
+            package,
+            project_bytes=project_bytes,
+            annotations_bytes=annotation_bytes,
+            asset_bytes=dict(assets),
+        ),
+        project_bytes,
+        annotation_bytes,
+        assets,
+    )
 
 
 def _artifact(
@@ -121,6 +196,106 @@ def test_adjudicated_package_and_raw_bytes_can_pass_small_complete_contract() ->
 
     assert result.disposition == "reject"  # the queue is intentionally not a real 60-page corpus
     assert not any("single-review" in reason or "raw-output" in reason for reason in result.reasons)
+
+
+def test_verified_authoritative_source_replaces_transcription_but_not_review() -> None:
+    page = _page(0)
+    source_file = b"authoritative text\n"
+    source_archive = _tar("source/manual.bolio", source_file)
+    region = AuthoritativeRegionTruth(
+        RegionGeometry("r1", ((0, 0), (1, 0), (1, 1)), ((0, 1), (1, 1)), 0, "prose"),
+        "authoritative text",
+        (),
+        "prose",
+        SourceSpan(1, 1),
+        layout_verification_state="verified",
+    )
+    package = AuthoritativeTruthPackage(
+        AUTHORITATIVE_TRUTH_VERSION,
+        page,
+        QueuePageBinding.from_queue_page(page),
+        TypesetterSourceProvenance(
+            hashlib.sha256(source_archive).hexdigest(),
+            _digest("authoritative text\n"),
+            "synthetic edition",
+            "source/manual.bolio",
+            ("strip-final-newline",),
+            TextDerivation("source-literal", "utf-8"),
+        ),
+        MappingEvidence(
+            (
+                MappingAnchor("printed-page-number", "1", "1"),
+                MappingAnchor("heading", "Synthetic", "Synthetic"),
+            ),
+            "human-mapping-review-required",
+        ),
+        (replace(region, layout_verification_state="human-review-required"),),
+    )
+    package, project_bytes, annotation_bytes, review_assets = _review(package)
+    raw = b"native engine output"
+
+    result = hard_gate(
+        (page,),
+        {},
+        {page.id: (_artifact(raw), raw)},
+        {page.id: (
+            package,
+            AuthoritativeMaterial(
+                source_archive,
+                source_file,
+                review_project=project_bytes,
+                review_annotations=annotation_bytes,
+                review_assets=review_assets,
+            ),
+        )},
+    )
+
+    assert not any("single-review" in reason for reason in result.reasons)
+    assert not any("invalid-authoritative" in reason for reason in result.reasons)
+
+
+def test_authoritative_source_gate_rejects_unreviewed_layout_and_wrong_bytes() -> None:
+    page = _page(0)
+    source_file = b"authoritative text\n"
+    region = AuthoritativeRegionTruth(
+        RegionGeometry("r1", ((0, 0), (1, 0), (1, 1)), ((0, 1), (1, 1)), 0, "prose"),
+        "authoritative text",
+        (),
+        "prose",
+        SourceSpan(1, 1),
+    )
+    package = AuthoritativeTruthPackage(
+        AUTHORITATIVE_TRUTH_VERSION,
+        page,
+        QueuePageBinding.from_queue_page(page),
+        TypesetterSourceProvenance(
+            _digest("recovered archive"),
+            _digest("authoritative text\n"),
+            "synthetic edition",
+            "source/manual.bolio",
+            ("strip-final-newline",),
+            TextDerivation("source-literal", "utf-8"),
+        ),
+        MappingEvidence(
+            (
+                MappingAnchor("printed-page-number", "1", "1"),
+                MappingAnchor("heading", "Synthetic", "Synthetic"),
+            ),
+            "verified",
+        ),
+        (region,),
+    )
+    raw = b"native engine output"
+
+    result = hard_gate(
+        (page,),
+        {},
+        {page.id: (_artifact(raw), raw)},
+        {page.id: (package, AuthoritativeMaterial(b"wrong archive", source_file))},
+    )
+
+    assert f"human-layout-review-required:{page.id}" in result.reasons
+    assert f"invalid-authoritative-material:{page.id}" in result.reasons
 
 
 def test_transcription_package_rejects_invented_truth_and_missing_inventory_coverage() -> None:

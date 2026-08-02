@@ -37,7 +37,7 @@ in [`docs/reproducible-environment.md`](docs/reproducible-environment.md).
 
 The current headless foundation can inventory and classify inputs, render
 immutable source pages, produce review-required Phase 1 packages, derive HTML
-and SVG views, evaluate literal OCR against manually entered ground truth, and
+and SVG views, evaluate literal OCR against source- or manually grounded truth, and
 validate deterministic package envelopes:
 
 ```sh
@@ -48,6 +48,16 @@ uv run lispmdoc ocr-capabilities
 uv run lispmdoc benchmark-ocr benchmark.json predictions.json
 uv run lispmdoc benchmark-check benchmarks/corpus.yaml
 uv run lispmdoc benchmark-select inspections.json page-tags.json --per-stratum 2
+uv run lispmdoc benchmark-bolio-extract source.bolio manual.vars \
+  --text-output work/reference.txt
+uv run lispmdoc benchmark-authoritative-apply-review \
+  work/truth-package.json work/review-project.json \
+  work/review-project.annotations.json work/reviewed-truth-package.json
+uv run lispmdoc benchmark-authoritative-check work/reviewed-truth-package.json \
+  --source-archive source-material/source.tar.gz \
+  --source-file source-material/extracted/source.bolio \
+  --review-project work/review-project.json \
+  --review-annotations work/review-project.annotations.json
 uv run lispmdoc decompile source-material/path/to/manual.pdf --dpi 300
 uv run lispmdoc render-views work/manual/lmdoc
 uv run lispmdoc patch-check corrections/example.json
@@ -85,9 +95,21 @@ approvals nor a promotion claim. `render-capabilities` reports unavailable
 dependencies as non-claims, rather than silently falling back to a different
 renderer.
 
-OCR quality is verified against a versioned, manually transcribed corpus.
+OCR quality is verified against versioned ground truth. Recovered original
+typesetter/author source is preferred and must pass exact material, page-mapping,
+and layout gates; independent double transcription is the fallback.
 Metrics include character and word error rates, punctuation and case accuracy,
 exact code-token accuracy, and explicit omitted/extra-region accounting.
 Provisional gates refuse to pass missing, undersized, or incorrectly grounded
-samples. No representative corpus has been transcribed yet, so no OCR engine is
-currently endorsed as the default.
+samples. No representative corpus has passed all review gates yet, so no OCR
+engine is currently endorsed as the default.
+
+When judgment is required, `web/review/` provides a loopback-only Vite UI with
+side-by-side scan/generated views, synchronized region highlights, source/OCR
+text comparison, corrections, and machine-readable annotations. See
+[`web/review/README.md`](web/review/README.md). Review output remains under
+ignored `work/` and is bound to the exact project and asset hashes.
+`benchmark-authoritative-apply-review` is the only promotion path from those
+saved decisions: page acceptance verifies mapping, every region must be
+accepted for layout readiness, and corrections/rejections remain discrepancies.
+The material gate reloads both exact files and refuses digest-shaped substitutes.

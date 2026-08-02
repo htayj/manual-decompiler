@@ -1,6 +1,6 @@
 # Implementation status
 
-Date: 2026-08-01
+Date: 2026-08-02
 
 This records implementation against `plans/implementation-plan.md`. Passing a
 foundation milestone is not a claim that the full decompiler exists.
@@ -55,6 +55,21 @@ foundation milestone is not a claim that the full decompiler exists.
   transcription workspaces, truth-free per-region coverage templates, and CLI
   review-state checks. Existing workspaces fail closed instead of being
   overwritten.
+- A separate recovered-typesetter-source truth contract binds the source
+  archive, primary and supporting source files, converter manifest, derived
+  text, exact source spans, PDF/render page identity, mapping anchors, and
+  independently reviewed layout. It cannot accept OCR/generated truth or
+  bypass mapping/layout review.
+- A deterministic MIT Bolio extractor resolves recovered `manual.vars`
+  cross-references, emits semantic reference blocks, and reports unsupported
+  constructs rather than silently losing them.
+- A loopback-only Vite review application displays scan and generated views
+  side by side, highlights regions, and atomically persists digest-bound page
+  and region annotations as JSON. Assets are allow-listed and hash-verified.
+- A fail-closed review consumer binds those exact project/annotation bytes to
+  the truth package; only accepted page mapping plus acceptance of every region
+  can close the authoritative gate. Declared source files are also verified as
+  exact members of the checksummed tar archive.
 
 ### Phase 1 orchestration and validation
 
@@ -178,11 +193,13 @@ store and are referenced by digest rather than duplicated into the compact
 package. These are local smoke results, not committed output artifacts, and do
 not establish replica fidelity.
 
-Chinual 4th Edition page index 99 is now the first ignored scan benchmark
-pilot. Its exact source and 300-DPI render are digest-bound, PaddleOCR and Surya
-raw outputs are retained by digest, and a 37-region blank transcription
-workspace exists. Its disposition is intentionally `human-review-required`;
-no model output was promoted to ground truth.
+Chinual 4th Edition page index 99 is now the first ignored authoritative-source
+benchmark pilot. Its exact source and 300-DPI render are digest-bound, and
+PaddleOCR and Surya raw outputs are retained separately. Recovered `FD.SYM 70`
+and `manual.vars` produce 15 semantic source regions with zero extraction
+findings. The package is materially verified but remains
+`human-mapping-review-required`; OCR-derived geometry also remains unverified.
+No model output was promoted to ground truth.
 
 ## Current automated verification
 
@@ -202,9 +219,9 @@ foundation and transcription-workspace commits exist; tracked working tree clean
 
 ## Not yet implemented
 
-- Representative, manually transcribed English benchmark corpus. The first
-  scan pilot and transcription tooling exist, but two independent human
-  transcriptions and adjudication have not happened.
+- Representative English benchmark corpus. One recovered-source scan pilot is
+  ready for mapping/layout review; additional manuals and page classes still
+  need authoritative-source discovery or manual fallback truth.
 - Evidence-backed OCR engine selection by page class.
 - Automatic integration of preprocessing proposals into conversion. The
   foundation supports conservative deskew/border operations and explicit

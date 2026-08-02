@@ -12,11 +12,16 @@ from typing import Any
 from PIL import Image
 
 from .benchmark import (
+    AuthoritativeMaterial,
+    AuthoritativeTruthPackage,
+    apply_review_annotations,
     candidates_from_inspections,
+    extract_bolio,
     initialize_transcription_workspace,
     load_corpus,
     load_transcription_package,
     load_wave1_queue,
+    render_reference_artifact,
     select_stratified_pages,
     transcription_status,
     validate_60_page_queue,
@@ -138,6 +143,49 @@ def _build_parser() -> argparse.ArgumentParser:
         help="validate one source-bound transcription package and report review state",
     )
     transcription_check.add_argument("package", type=Path)
+
+    authoritative_check = subparsers.add_parser(
+        "benchmark-authoritative-check",
+        help="verify a recovered-typesetter-source truth package and its exact material bytes",
+    )
+    authoritative_check.add_argument("package", type=Path)
+    authoritative_check.add_argument("--source-archive", required=True, type=Path)
+    authoritative_check.add_argument("--source-file", required=True, type=Path)
+    authoritative_check.add_argument("--converter", type=Path)
+    authoritative_check.add_argument("--converted-text", type=Path)
+    authoritative_check.add_argument("--review-project", type=Path)
+    authoritative_check.add_argument("--review-annotations", type=Path)
+    authoritative_check.add_argument(
+        "--supporting",
+        action="append",
+        default=[],
+        metavar="MEMBER=PATH",
+        help="bind an additional archive member name to its local extracted file",
+    )
+    authoritative_check.add_argument(
+        "--ground-truth-output",
+        type=Path,
+        help="write verified evaluator input; existing files are never overwritten",
+    )
+
+    authoritative_review = subparsers.add_parser(
+        "benchmark-authoritative-apply-review",
+        help="derive mapping/layout states from exact local review annotation bytes",
+    )
+    authoritative_review.add_argument("package", type=Path)
+    authoritative_review.add_argument("project", type=Path)
+    authoritative_review.add_argument("annotations", type=Path)
+    authoritative_review.add_argument("output", type=Path)
+
+    bolio_extract = subparsers.add_parser(
+        "benchmark-bolio-extract",
+        help="derive deterministic reference text from recovered MIT Bolio source",
+    )
+    bolio_extract.add_argument("source", type=Path)
+    bolio_extract.add_argument("manual_vars", type=Path)
+    bolio_extract.add_argument("--start-line", type=int, default=1)
+    bolio_extract.add_argument("--end-line", type=int)
+    bolio_extract.add_argument("--text-output", required=True, type=Path)
 
     render_views = subparsers.add_parser(
         "render-views", help="derive semantic HTML and paged SVG from an authoring tree"
@@ -279,6 +327,54 @@ def _load_raster_assets(path: Path | None) -> dict[str, Path]:
     ):
         raise ValueError("raster assets must be a JSON object mapping digests to paths")
     return {digest: Path(asset) for digest, asset in value.items()}
+
+
+def _authoritative_material(args: argparse.Namespace) -> AuthoritativeMaterial:
+    supporting: dict[str, bytes] = {}
+    for value in args.supporting:
+        if "=" not in value:
+            raise ValueError("--supporting must use MEMBER=PATH")
+        member, local_path = value.split("=", 1)
+        if not member or not local_path or member in supporting:
+            raise ValueError("--supporting needs a unique non-empty member and path")
+        supporting[member] = Path(local_path).read_bytes()
+    return AuthoritativeMaterial(
+        args.source_archive.read_bytes(),
+        args.source_file.read_bytes(),
+        args.converter.read_bytes() if args.converter else None,
+        args.converted_text.read_bytes() if args.converted_text else None,
+        tuple(sorted(supporting.items())),
+        args.review_project.read_bytes() if args.review_project else None,
+        args.review_annotations.read_bytes() if args.review_annotations else None,
+        _review_assets(args.review_project) if args.review_project else (),
+    )
+
+
+def _review_assets(project_path: Path) -> tuple[tuple[str, bytes], ...]:
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    if not isinstance(project, dict) or not isinstance(project.get("assets"), dict):
+        raise ValueError("review project assets must be an object")
+    root = project_path.resolve().parent
+    loaded: list[tuple[str, bytes]] = []
+    for asset_id, raw_definition in project["assets"].items():
+        if not isinstance(asset_id, str) or not isinstance(raw_definition, dict):
+            raise ValueError("review asset definitions must be named objects")
+        candidate = raw_definition.get("path")
+        if not isinstance(candidate, str) or not candidate or Path(candidate).is_absolute():
+            raise ValueError("review asset paths must be non-empty and relative")
+        resolved = (root / candidate).resolve(strict=True)
+        if not resolved.is_relative_to(root) or not resolved.is_file():
+            raise ValueError(
+                "review assets must resolve to regular files inside the project directory"
+            )
+        loaded.append((asset_id, resolved.read_bytes()))
+    return tuple(sorted(loaded))
+
+
+def _write_new_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as stream:
+        stream.write(payload)
 
 
 def _load_attestation_inputs(path: Path) -> ReplicaAttestationInputs:
@@ -484,6 +580,67 @@ def run(argv: Sequence[str] | None = None) -> int:
         status = transcription_status(load_transcription_package(args.package))
         _write_json(status)
         return 0 if status["disposition"] == "adjudicated" else 1
+    elif args.command == "benchmark-authoritative-check":
+        package = AuthoritativeTruthPackage.from_json(args.package.read_text(encoding="utf-8"))
+        package.verify_material_bundle(_authoritative_material(args))
+        authoritative_status = dict[str, object](package.status().to_dict())
+        output_path = args.ground_truth_output
+        if output_path is not None and authoritative_status["disposition"] == "authoritative-ready":
+            ground_truth = [
+                {
+                    "id": region.geometry.region_id,
+                    "kind": region.kind,
+                    "required": region.required,
+                    "text": region.literal_text,
+                }
+                for region in package.regions
+            ]
+            payload = (
+                json.dumps(
+                    ground_truth,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            ).encode("utf-8")
+            _write_new_bytes(output_path, payload)
+            authoritative_status["ground_truth_output"] = str(output_path)
+            authoritative_status["ground_truth_sha256"] = sha256_bytes(payload)
+        authoritative_status["material_verified"] = True
+        authoritative_status["region_count"] = len(package.regions)
+        _write_json(authoritative_status)
+        return 0 if authoritative_status["disposition"] == "authoritative-ready" else 1
+    elif args.command == "benchmark-authoritative-apply-review":
+        package = AuthoritativeTruthPackage.from_json(args.package.read_text(encoding="utf-8"))
+        reviewed = apply_review_annotations(
+            package,
+            project_bytes=args.project.read_bytes(),
+            annotations_bytes=args.annotations.read_bytes(),
+            asset_bytes=dict(_review_assets(args.project)),
+        )
+        _write_new_bytes(args.output, reviewed.to_json().encode("utf-8"))
+        status = dict[str, object](reviewed.status().to_dict())
+        status["output"] = str(args.output)
+        status["review_project_sha256"] = sha256_file(args.project)
+        status["review_annotations_sha256"] = sha256_file(args.annotations)
+        _write_json(status)
+        return 0 if reviewed.ready else 1
+    elif args.command == "benchmark-bolio-extract":
+        extraction = extract_bolio(
+            args.source.read_text(encoding="latin-1"),
+            args.manual_vars.read_text(encoding="latin-1"),
+            start_line=args.start_line,
+            end_line=args.end_line,
+        )
+        artifact = render_reference_artifact(extraction)
+        _write_new_bytes(args.text_output, artifact.bytes)
+        extraction_report = artifact.to_dict()
+        extraction_report["blocks"] = [block.to_dict() for block in extraction.blocks]
+        extraction_report["issues"] = [issue.to_dict() for issue in extraction.issues]
+        extraction_report["text_output"] = str(args.text_output)
+        _write_json(extraction_report)
+        return 0 if not extraction.issues else 1
     elif args.command == "render-views":
         authoring_records = _load_authoring_records(args.authoring_tree)
         views = write_view_tree(

@@ -1,8 +1,9 @@
-"""Wave 1 benchmark contracts: selection, human truth, evidence, and gates.
+"""Wave 1 benchmark contracts: selection, grounded truth, evidence, and gates.
 
 No OCR engine is invoked here and no text is generated.  A 60-page queue is a
-selection contract only; it cannot become a passing benchmark until human
-double transcription, adjudication, coverage, and raw engine evidence exist.
+selection contract only. It cannot pass until each page has either verified
+typesetter-source truth with reviewed mapping/layout, or independent human
+double transcription and adjudication, plus coverage and raw engine evidence.
 """
 
 from __future__ import annotations
@@ -12,6 +13,10 @@ import json
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .authoritative import AuthoritativeMaterial, AuthoritativeTruthPackage
 
 WAVE1_VERSION = "lispmdoc-benchmark-wave1"
 REQUIRED_COMPOSITION: dict[str, int] = {
@@ -475,9 +480,13 @@ def hard_gate(
     queue: Sequence[QueuePage],
     packages: Mapping[str, TranscriptionPackage],
     artifacts: Mapping[str, tuple[RawEngineArtifact, bytes]],
+    authoritative_packages: Mapping[
+        str, tuple[AuthoritativeTruthPackage, AuthoritativeMaterial]
+    ] | None = None,
 ) -> HardGateResult:
-    """Reject all missing, stale, single-review, or raw-evidence shortcuts."""
+    """Reject missing, stale, unreviewed, or unverified truth/evidence shortcuts."""
     queue_state = validate_60_page_queue(queue)
+    source_packages = authoritative_packages or {}
     reasons: list[str] = []
     if queue_state.disposition != "selection-ready":
         reasons.append(queue_state.disposition)
@@ -488,40 +497,76 @@ def hard_gate(
         if page.expected_run is None:
             reasons.append(f"missing-expected-run-contract:{page.id}")
         package = packages.get(page.id)
-        if package is None:
+        source_entry = source_packages.get(page.id)
+        if package is not None and source_entry is not None:
+            reasons.append(f"ambiguous-manual-and-authoritative-truth:{page.id}")
+            continue
+        if package is None and source_entry is None:
             reasons.append(f"missing-package:{page.id}")
             continue
-        if (
-            package.page.source_sha256 != page.source_sha256
-            or package.page.render_sha256 != page.render_sha256
-        ):
-            reasons.append(f"stale-source-or-render:{page.id}")
-        if (
-            package.page.source_page_index != page.source_page_index
-            or package.page.page_class != page.page_class
-            or package.page.tags != page.tags
-        ):
-            reasons.append(f"mismatched-page-index-class-or-tags:{page.id}")
-        if package.page.inventory_region_ids != page.inventory_region_ids:
-            reasons.append(f"mismatched-region-inventory:{page.id}")
-        if package.page.expected_run != page.expected_run:
-            reasons.append(f"mismatched-expected-run-contract:{page.id}")
-        if not package.complete_coverage:
-            reasons.append(f"incomplete-coverage:{page.id}")
-        if not package.adjudicated:
-            reasons.append(f"single-review-or-unadjudicated:{page.id}")
-        adjudicated = next(
-            (item for item in package.transcriptions if item.state == "adjudicated"), None
-        )
-        if adjudicated is not None:
-            characters = sum(len(region.literal_text) for region in adjudicated.regions)
+        truth_texts: tuple[str, ...] = ()
+        if package is not None:
+            if (
+                package.page.source_sha256 != page.source_sha256
+                or package.page.render_sha256 != page.render_sha256
+            ):
+                reasons.append(f"stale-source-or-render:{page.id}")
+            if (
+                package.page.source_page_index != page.source_page_index
+                or package.page.page_class != page.page_class
+                or package.page.tags != page.tags
+            ):
+                reasons.append(f"mismatched-page-index-class-or-tags:{page.id}")
+            if package.page.inventory_region_ids != page.inventory_region_ids:
+                reasons.append(f"mismatched-region-inventory:{page.id}")
+            if package.page.expected_run != page.expected_run:
+                reasons.append(f"mismatched-expected-run-contract:{page.id}")
+            if not package.complete_coverage:
+                reasons.append(f"incomplete-coverage:{page.id}")
+            if not package.adjudicated:
+                reasons.append(f"single-review-or-unadjudicated:{page.id}")
+            adjudicated = next(
+                (item for item in package.transcriptions if item.state == "adjudicated"), None
+            )
+            if adjudicated is not None:
+                truth_texts = tuple(region.literal_text for region in adjudicated.regions)
+        else:
+            assert source_entry is not None
+            source_package, source_material = source_entry
+            source_page = source_package.queue_page
+            if (
+                source_page.source_sha256 != page.source_sha256
+                or source_page.render_sha256 != page.render_sha256
+            ):
+                reasons.append(f"stale-source-or-render:{page.id}")
+            if (
+                source_page.source_page_index != page.source_page_index
+                or source_page.page_class != page.page_class
+                or source_page.tags != page.tags
+            ):
+                reasons.append(f"mismatched-page-index-class-or-tags:{page.id}")
+            if source_page.inventory_region_ids != page.inventory_region_ids:
+                reasons.append(f"mismatched-region-inventory:{page.id}")
+            if source_page.expected_run != page.expected_run:
+                reasons.append(f"mismatched-expected-run-contract:{page.id}")
+            material_verified = True
+            try:
+                source_package.verify_material_bundle(source_material)
+            except ValueError:
+                material_verified = False
+                reasons.append(f"invalid-authoritative-material:{page.id}")
+            status = source_package.status().disposition
+            if status != "authoritative-ready":
+                reasons.append(f"{status}:{page.id}")
+            elif material_verified:
+                truth_texts = tuple(region.literal_text for region in source_package.regions)
+        if truth_texts:
+            characters = sum(len(text) for text in truth_texts)
             for tag in scanned_prose_characters:
                 if tag in page.tags:
                     scanned_prose_characters[tag] += characters
             if "code-terminal" in page.tags:
-                code_tokens += sum(
-                    len(region.literal_text.split()) for region in adjudicated.regions
-                )
+                code_tokens += sum(len(text.split()) for text in truth_texts)
         evidence = artifacts.get(page.id)
         if evidence is None or not evidence[0].verify(evidence[1]):
             reasons.append(f"missing-or-invalid-raw-output:{page.id}")

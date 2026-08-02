@@ -96,7 +96,8 @@ Deliver:
 - deterministic 60-page queue bound to exact source and render hashes;
 - transcription export covering regions, literal text, line breaks, baselines,
   polygons, reading order, semantics, tables, and coverage dispositions;
-- independent double transcription and adjudication;
+- authoritative recovered-source truth when available, otherwise independent
+  double transcription and adjudication;
 - exact engine-output artifact retention;
 - metrics for text, omissions, regions, reading order, semantics, tables,
   calibration, runtime, memory, VRAM, and size;
@@ -119,14 +120,17 @@ Required composition, with overlap allowed:
 Gate:
 
 - complete page-region inventory;
-- two manual transcriptions adjudicated;
+- every truth package is either verified recovered typesetter source with
+  confirmed page mapping and reviewed scan-bound layout, or two manual
+  transcriptions adjudicated;
 - generated text cannot become truth;
 - duplicate, missing, single-review, stale-source, undersized, or
   absent-raw-output records cannot pass;
 - reports reproduce byte-for-byte.
 
-Human dependency: transcription and adjudication. Copyrighted truth remains
-ignored unless redistribution is cleared.
+Human dependency: source/scan mapping and layout adjudication; transcription is
+the fallback only where no authoritative source exists. Copyrighted truth
+remains ignored unless redistribution is cleared.
 
 ### Lane C: extraction and reversible preprocessing
 

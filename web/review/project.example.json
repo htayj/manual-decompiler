@@ -1,0 +1,33 @@
+{
+  "format_version": "1.0",
+  "document_id": "chinual-4th-edition",
+  "title": "Lisp Machine Manual, 4th edition — review",
+  "assets": {
+    "scan-100": { "path": "assets/scan-100.png", "sha256": "REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS", "media_type": "image/png" },
+    "replica-100": { "path": "assets/replica-100.svg", "sha256": "REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS", "media_type": "image/svg+xml" }
+  },
+  "review_instructions": {
+    "page": "Accept confirms this scan page is correctly mapped to its source and generated views.",
+    "region": "Accept confirms the region's source text, scan evidence, and generated layout agree."
+  },
+  "pages": [
+    {
+      "id": "scan-100",
+      "label": "Scan 100 · printed page 88",
+      "reference_asset_id": "scan-100",
+      "generated_asset_id": "replica-100",
+      "regions": [
+        {
+          "id": "function-cell-location",
+          "label": "function-cell-location",
+          "kind": "definition",
+          "reference_box": [0.12, 0.20, 0.76, 0.13],
+          "generated_box": [0.12, 0.20, 0.76, 0.13],
+          "source_text": "(function-cell-location sym)",
+          "ocr_text": "(function-cell-location sym)",
+          "canonical_text": "(function-cell-location sym)"
+        }
+      ]
+    }
+  ]
+}

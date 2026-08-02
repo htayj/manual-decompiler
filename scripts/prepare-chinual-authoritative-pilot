@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""Prepare the ignored Chinual page-100 source-mapping review pilot."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import html
+import json
+import shutil
+from html.parser import HTMLParser
+from pathlib import Path
+
+from lispmdoc.benchmark import (
+    AUTHORITATIVE_TRUTH_VERSION,
+    AuthoritativeRegionTruth,
+    AuthoritativeTruthPackage,
+    MappingAnchor,
+    MappingEvidence,
+    QueuePage,
+    QueuePageBinding,
+    RegionGeometry,
+    SourceSpan,
+    SupportingSourceFile,
+    TextDerivation,
+    TypesetterSourceProvenance,
+    extract_bolio,
+    render_reference_artifact,
+)
+from lispmdoc.benchmark.workspace import expected_run_from_dict
+
+SOURCE_PDF_SHA256 = "123ceb361b0c84864425fc7eee319afc9891a7a68e417f93386f8172334a6e85"
+RENDER_SHA256 = "54cb0a866ecb74d6594ab834b83865221df1feb1cc51fbcfb2c4b5f568f7f502"
+ARCHIVE_SHA256 = "1bf917d545a854d3e04c6c778bbb8788b8d42b9c4fc41e9b39b6534014fe3b67"
+SOURCE_SHA256 = "36352edeacc7213bbcf9037e4cadad7c068066b352d130450f2e7986b1a4216e"
+VARS_SHA256 = "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba"
+PAGE_WIDTH = 2550
+PAGE_HEIGHT = 3300
+
+
+class _TextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+
+def _html_text(value: str) -> str:
+    parser = _TextExtractor()
+    parser.feed(value)
+    return " ".join("".join(parser.parts).split())
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _json_bytes(value: object) -> bytes:
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+
+
+def _write_new(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as stream:
+        stream.write(payload)
+
+
+def _bbox(block: dict[str, object]) -> tuple[int, int, int, int]:
+    raw = block["bbox"]
+    if not isinstance(raw, list) or len(raw) != 4:
+        raise ValueError("Surya block lacks a four-coordinate bbox")
+    return tuple(round(float(value)) for value in raw)  # type: ignore[return-value]
+
+
+def _semantic_type(kind: str) -> str:
+    return {"function": "definition", "section": "section", "body": "prose", "code": "code"}[
+        kind
+    ]
+
+
+def _svg(reference_regions: list[dict[str, object]]) -> bytes:
+    content = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="612" height="792" viewBox="0 0 2550 3300">',
+        '<rect width="2550" height="3300" fill="#fffdf8"/>',
+    ]
+    for item in reference_regions:
+        x1, y1, x2, y2 = item["bbox"]  # type: ignore[misc]
+        kind = str(item["kind"])
+        size = 31 if kind in {"function", "section"} else 24
+        weight = "700" if kind in {"function", "section"} else "400"
+        content.append(
+            f'<rect x="{x1}" y="{y1}" width="{x2 - x1}" height="{y2 - y1}" '
+            'fill="none" stroke="#d87542" stroke-width="3" opacity="0.55"/>'
+        )
+        for line_index, line in enumerate(str(item["text"]).splitlines()):
+            baseline = y1 + size + line_index * (size + 8)
+            if baseline >= y2:
+                break
+            content.append(
+                f'<text x="{x1}" y="{baseline}" font-family="serif" font-size="{size}" '
+                f'font-weight="{weight}" fill="#17201d">{html.escape(line)}</text>'
+            )
+    content.append("</svg>")
+    return ("\n".join(content) + "\n").encode("utf-8")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--project-root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--output", type=Path, default=Path("work/benchmark-pilot/authoritative-review")
+    )
+    args = parser.parse_args()
+    root = args.project_root.resolve()
+    output = (root / args.output).resolve() if not args.output.is_absolute() else args.output
+    if output.exists():
+        raise FileExistsError(f"refusing to overwrite pilot output: {output}")
+
+    recovered = root / "source-material/reference-transcriptions/unlambda"
+    archive = recovered / "lmman.tar.gz"
+    lmman = recovered / "extracted/lmman"
+    source = lmman / "orig4ed/fd_sym.70"
+    variables = lmman / "orig4ed/manual.vars"
+    scan = next((root / "work/benchmark-pilot" / SOURCE_PDF_SHA256).glob("*/pages/p000100.png"))
+    surya = root / "work/benchmark-pilot/surya/p000100/results.json"
+    old_queue = json.loads((root / "work/benchmark-pilot/queue-pilot.json").read_text())
+
+    expected = {
+        archive: ARCHIVE_SHA256,
+        source: SOURCE_SHA256,
+        variables: VARS_SHA256,
+        scan: RENDER_SHA256,
+    }
+    for path, digest in expected.items():
+        if _sha256(path) != digest:
+            raise ValueError(f"pilot input digest changed: {path}")
+
+    extraction = extract_bolio(
+        source.read_text(encoding="latin-1"),
+        variables.read_text(encoding="latin-1"),
+        start_line=126,
+        end_line=180,
+    )
+    if extraction.issues:
+        raise ValueError("Bolio extraction has unresolved issues")
+    reference = render_reference_artifact(extraction)
+
+    raw_surya = json.loads(surya.read_text(encoding="utf-8"))
+    blocks = raw_surya["p000100"][0]["blocks"]
+    content_blocks = [block for block in blocks if 3 <= int(block["reading_order"]) <= 17]
+    if len(content_blocks) != len(reference.regions):
+        raise ValueError("source blocks no longer align one-to-one with Surya content blocks")
+
+    converter_files = [
+        root / "src/lispmdoc/benchmark/bolio.py",
+        root / "src/lispmdoc/benchmark/source_reference.py",
+    ]
+    converter_manifest = _json_bytes(
+        {
+            "format_version": "lispmdoc-bolio-reference-converter-1",
+            "implementation_files": [
+                {"path": path.relative_to(root).as_posix(), "sha256": _sha256(path)}
+                for path in converter_files
+            ],
+            "source_line_span": [126, 180],
+        }
+    )
+    converter_sha256 = hashlib.sha256(converter_manifest).hexdigest()
+
+    prior_page = old_queue["pages"][0]
+    region_ids = tuple(f"block-{index:03d}" for index in range(1, len(reference.regions) + 1))
+    queue_page = QueuePage(
+        SOURCE_PDF_SHA256,
+        99,
+        RENDER_SHA256,
+        str(prior_page["page_class"]),
+        tuple(prior_page["tags"]),
+        region_ids,
+        expected_run_from_dict(prior_page["expected_run"]),
+    )
+    truth_regions: list[AuthoritativeRegionTruth] = []
+    review_regions: list[dict[str, object]] = []
+    svg_regions: list[dict[str, object]] = []
+    for region_id, reference_region, surya_block in zip(
+        region_ids, reference.regions, content_blocks, strict=True
+    ):
+        x1, y1, x2, y2 = _bbox(surya_block)
+        semantic = _semantic_type(reference_region.kind)
+        breaks = tuple(
+            index for index, character in enumerate(reference_region.text) if character == "\n"
+        )
+        truth_regions.append(
+            AuthoritativeRegionTruth(
+                RegionGeometry(
+                    region_id,
+                    ((x1, y1), (x2, y1), (x2, y2), (x1, y2)),
+                    ((x1, y2), (x2, y2)),
+                    reference_region.index,
+                    semantic,
+                ),
+                reference_region.text,
+                breaks,
+                reference_region.kind,
+                SourceSpan(
+                    reference_region.source_span.start_line,
+                    reference_region.source_span.end_line,
+                ),
+                layout_verification_state="human-review-required",
+            )
+        )
+        normalized_box = [
+            x1 / PAGE_WIDTH,
+            y1 / PAGE_HEIGHT,
+            (x2 - x1) / PAGE_WIDTH,
+            (y2 - y1) / PAGE_HEIGHT,
+        ]
+        review_regions.append(
+            {
+                "canonical_text": reference_region.text,
+                "id": region_id,
+                "kind": semantic,
+                "label": reference_region.text.splitlines()[0][:80],
+                "ocr_text": _html_text(str(surya_block["html"])),
+                "reference_box": normalized_box,
+                "generated_box": normalized_box,
+                "source_text": reference_region.text,
+            }
+        )
+        svg_regions.append(
+            {"bbox": [x1, y1, x2, y2], "kind": reference_region.kind, "text": reference_region.text}
+        )
+
+    package = AuthoritativeTruthPackage(
+        AUTHORITATIVE_TRUTH_VERSION,
+        queue_page,
+        QueuePageBinding.from_queue_page(queue_page),
+        TypesetterSourceProvenance(
+            ARCHIVE_SHA256,
+            SOURCE_SHA256,
+            "Lisp Machine Manual, fourth edition, July 1981",
+            "lmman/orig4ed/fd_sym.70",
+            ("strip-final-newline",),
+            TextDerivation(
+                "converted-text",
+                "utf-8",
+                "lispmdoc-bolio-reference-converter-1",
+                converter_sha256,
+                reference.sha256,
+            ),
+            (SupportingSourceFile("lmman/orig4ed/manual.vars", VARS_SHA256),),
+        ),
+        MappingEvidence(
+            (
+                MappingAnchor("printed-page-number", "88", "88"),
+                MappingAnchor("heading", "The Property List", "The Property List"),
+                MappingAnchor(
+                    "source-footer", "MCL:LMMAN;FD.SYM 70", "MCL:LMMAN;FD.SYM 70"
+                ),
+            ),
+            "human-mapping-review-required",
+        ),
+        tuple(truth_regions),
+    )
+
+    assets = output / "assets"
+    assets.mkdir(parents=True)
+    scan_copy = assets / "scan-p000100.png"
+    shutil.copyfile(scan, scan_copy)
+    replica = assets / "source-layout-p000100.svg"
+    _write_new(replica, _svg(svg_regions))
+    _write_new(output / "reference.txt", reference.bytes)
+    _write_new(output / "converter-manifest.json", converter_manifest)
+    _write_new(output / "truth-package.json", package.to_json().encode("utf-8"))
+    _write_new(
+        output / "queue.json",
+        _json_bytes({"pages": [queue_page.to_dict()], "version": "lispmdoc-benchmark-wave1"}),
+    )
+    review_project = {
+        "assets": {
+            "replica-p000100": {
+                "media_type": "image/svg+xml",
+                "path": "assets/source-layout-p000100.svg",
+                "sha256": _sha256(replica),
+            },
+            "scan-p000100": {
+                "media_type": "image/png",
+                "path": "assets/scan-p000100.png",
+                "sha256": _sha256(scan_copy),
+            },
+        },
+        "document_id": "chinual-4th-edition-page-100",
+        "format_version": "1.0",
+        "pages": [
+            {
+                "generated_asset_id": "replica-p000100",
+                "id": queue_page.id,
+                "label": "PDF page 100 · printed page 88 · FD.SYM 70",
+                "reference_asset_id": "scan-p000100",
+                "regions": review_regions,
+            }
+        ],
+        "review_instructions": {
+            "page": (
+                "Accept only if the scan is printed page 88 and its footer identifies "
+                "MCL:LMMAN;FD.SYM 70. This confirms mapping, not transcription."
+            ),
+            "region": (
+                "Accept if recovered wording and the highlighted scan region agree and the box "
+                "covers the complete region. Use needs fix for line-break or box corrections."
+            ),
+        },
+        "title": "Chinual 4th edition · authoritative-source pilot",
+    }
+    _write_new(output / "review-project.json", _json_bytes(review_project))
+    _write_new(
+        output / "material-paths.json",
+        _json_bytes(
+            {
+                "converted_text": "reference.txt",
+                "converter": "converter-manifest.json",
+                "source_archive": str(archive),
+                "source_file": str(source),
+                "supporting": {"lmman/orig4ed/manual.vars": str(variables)},
+            }
+        ),
+    )
+    print(output / "review-project.json")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

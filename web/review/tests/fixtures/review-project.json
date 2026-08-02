@@ -1,0 +1,28 @@
+{
+  "format_version": "1.0",
+  "document_id": "fixture-document",
+  "title": "Review fixture",
+  "assets": {
+    "reference": { "path": "reference.svg", "sha256": "e6db5393201a0d726b02d58d46a59c3bc40d9513b4e119c2233b0f186c5ec6df", "media_type": "image/svg+xml" },
+    "generated": { "path": "generated.svg", "sha256": "32ef1e144e22d760a86f0b91eca772b8d84da7026888c4dd1adfeb3968d57b72", "media_type": "image/svg+xml" }
+  },
+  "pages": [
+    {
+      "id": "page-1",
+      "label": "Test page",
+      "reference_asset_id": "reference",
+      "generated_asset_id": "generated",
+      "regions": [
+        {
+          "id": "function-cell-location",
+          "label": "function-cell-location",
+          "reference_box": [0.1, 0.2, 0.8, 0.12],
+          "generated_box": [0.1, 0.2, 0.8, 0.12],
+          "source_text": "(function-cell-location sym)",
+          "ocr_text": "(function-cell-location sym)",
+          "canonical_text": "(function-cell-location sym)"
+        }
+      ]
+    }
+  ]
+}

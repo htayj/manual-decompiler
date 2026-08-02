@@ -1,11 +1,23 @@
 # OCR benchmark corpus
 
-Engine selection must be based on a manually transcribed English/manual
-benchmark, not on confidence scores or the Japanese NetHack guide results.
+Engine selection must be based on independently grounded English/manual truth,
+not confidence scores or the Japanese NetHack guide results. Two truth routes
+are valid:
 
-The versioned corpus manifest is JSON or YAML. Every selected page is bound to
-the exact PDF SHA-256 and zero-based source page index. Every truth record must
-declare `method: manual` and a human `recorded_by`; generated text is rejected.
+- recovered original typesetter/author source, with every archive, source,
+  supporting file, converter, derived-text span, scan mapping, and layout
+  decision hash-bound and verified;
+- independent manual double transcription plus adjudication when authoritative
+  source cannot be found.
+
+OCR output, search-engine text, and model-generated corrections are witnesses,
+never truth.
+
+The legacy corpus manifest is JSON or YAML. Every selected page is bound to the
+exact PDF SHA-256 and zero-based source page index. Its inline truth records
+remain manual-only; generated text is rejected. Recovered source uses the
+stronger `lispmdoc-authoritative-typesetter-truth-1` package instead of
+weakening that legacy contract.
 
 ```yaml
 version: lispmdoc-benchmark-1
@@ -47,9 +59,48 @@ It binds the package to the source PDF digest, zero-based page index, render
 digest, region inventory, composition tags, and exact expected run identity.
 Existing workspaces are never overwritten.
 
-The workspace and copyrighted transcriptions belong under ignored `work/`
-unless redistribution rights are established. Tracked fixtures must remain
-synthetic and contain no copied manual text.
+For recovered MIT Bolio material, derive a comparison artifact without OCR:
+
+```sh
+lispmdoc benchmark-bolio-extract SOURCE MANUAL.VARS \
+  --start-line 126 --end-line 180 \
+  --text-output work/reference.txt
+```
+
+The extractor resolves typesetter variables from `manual.vars`, retains source
+spans, and reports unsupported directives or control bytes. An authoritative
+truth package is then checked against the exact local material bytes:
+
+```sh
+lispmdoc benchmark-authoritative-check work/truth-package.json \
+  --source-archive source-material/reference.tar.gz \
+  --source-file source-material/extracted/manual.bolio \
+  --converter work/converter-manifest.json \
+  --converted-text work/reference.txt \
+  --supporting archive/member.vars=source-material/extracted/manual.vars \
+  --review-project work/review-project.json \
+  --review-annotations work/review-project.annotations.json
+```
+
+The declared primary/supporting paths must be exact regular-file members of the
+checksummed tar archive, with identical bytes. After saving the local UI, first
+derive review state without hand-editing JSON:
+
+```sh
+lispmdoc benchmark-authoritative-apply-review \
+  work/truth-package.json work/review-project.json \
+  work/review-project.annotations.json work/reviewed-truth-package.json
+```
+
+The check command exits successfully only when the material verifies and mapping and
+layout review are complete. It distinguishes `human-mapping-review-required`,
+`human-layout-review-required`, and `source-scan-discrepancy`. Verified literal
+truth can be exported for `benchmark-ocr` with `--ground-truth-output`; pending
+or discrepant packages never create that output.
+
+The workspace, recovered source, and copyrighted truth belong under ignored
+`source-material/` and `work/` unless redistribution rights are established.
+Tracked fixtures must remain synthetic and contain no copied manual text.
 
 The lower-level `benchmark-ocr` evaluator accepts a JSON ground-truth array:
 
@@ -115,7 +166,11 @@ It is bound to source SHA-256
 `123ceb361b0c84864425fc7eee319afc9891a7a68e417f93386f8172334a6e85`
 and 300-DPI render SHA-256
 `54cb0a866ecb74d6594ab834b83865221df1feb1cc51fbcfb2c4b5f568f7f502`.
-The blank 37-region package correctly remains `human-review-required`.
+Recovered Bolio `FD.SYM 70` plus `manual.vars` now produces 15 exact semantic
+text regions with zero extraction findings. The scan footer, printed page, and
+heading provide mapping anchors. Source wording and cross-references are
+automatic; the remaining page mapping and OCR-derived region boxes are exposed
+through the localhost Vite review app and remain review-required.
 
 Raw candidate outputs are retained separately from truth:
 
@@ -124,5 +179,6 @@ Raw candidate outputs are retained separately from truth:
 - Surya output SHA-256
   `17e369cd12e97942387df9713dc94a41fccf714fbd562d97fa05f3e92bfdf595`.
 
-Neither candidate output is authoritative until humans complete and adjudicate
-the transcription package.
+Neither candidate OCR output is authoritative. With the recovered source, the
+single human confirms mapping/layout and adjudicates source-versus-scan
+differences rather than retranscribing the page.
