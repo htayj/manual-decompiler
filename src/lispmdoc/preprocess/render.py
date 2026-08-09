@@ -6,7 +6,7 @@ import json
 import re
 import shutil
 import subprocess
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -142,6 +142,7 @@ def render_pdf(
     dpi: int = 300,
     pages: str | Sequence[int] | None = None,
     preprocess_settings: PreprocessSettings | None = None,
+    backend_override: Mapping[str, str] | None = None,
 ) -> RenderResult:
     """Render selected PDF pages into a safe generated root without editing source.
 
@@ -159,7 +160,11 @@ def render_pdf(
     source_fingerprint = _source_fingerprint(source_path)
     settings = preprocess_settings or PreprocessSettings()
     settings_digest = canonical_settings_digest(settings)
-    backend = probe_render_backend()
+    backend = (
+        _validated_backend_override(backend_override)
+        if backend_override
+        else probe_render_backend()
+    )
     page_infos = _read_pdf_pages(source_path)
     selected = parse_page_subset(pages, len(page_infos))
     root = _safe_output_root(Path(output_root), source_path)
@@ -256,6 +261,30 @@ def render_pdf(
     )
     _write_manifest(manifest_path, manifest)
     return RenderResult(manifest, artifact_directory, manifest_path, cache_reused=False)
+
+
+def _validated_backend_override(backend: Mapping[str, str]) -> dict[str, str]:
+    """Accept only a fully specified Poppler backend chosen by a caller.
+
+    This is intentionally narrower than capability probing: provenance callers
+    can supply a copied, digest-bound executable and know that render commands
+    will invoke that exact pathname. The default probe remains unchanged.
+    """
+
+    required = {"executable", "name", "version"}
+    if set(backend) != required or any(not isinstance(backend[key], str) for key in required):
+        raise RenderBackendUnavailableError(
+            "renderer backend override must contain executable/name/version"
+        )
+    name = backend["name"]
+    executable = Path(backend["executable"])
+    if name not in {"pdftoppm", "pdftocairo"}:
+        raise RenderBackendUnavailableError("renderer backend override must be a Poppler renderer")
+    if executable.is_symlink() or not executable.is_file():
+        raise RenderBackendUnavailableError(
+            "renderer backend override must name a regular non-symlink executable"
+        )
+    return {key: backend[key] for key in sorted(required)}
 
 
 def compose_affine(outer: AffineTransform, inner: AffineTransform) -> AffineTransform:

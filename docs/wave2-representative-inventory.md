@@ -47,6 +47,12 @@ Interlisp page 99; and Symbolics Users Guide page 49. The K page 95 tag is only
 `born-digital`: its visible boxes and arrows are not asserted to be a semantic
 schematic before a semantics review.
 
+K Machine and CLIM are the only current `native-pdf-objects` candidates. Their
+native text objects are evidence proposals pending extraction/layout/reading-
+order/semantic gates, not benchmark truth. Symbolics Users Guide page 49 is
+instead `ocr-derived`: its Acrobat text layer is not demonstrated original, so
+it is an ineligible witness rather than native-object evidence.
+
 The report counts only selection-eligible pages toward the 60-page Wave-1
 composition. Consequently its current `undersized` state is an expected
 boundary, not a quality result or a reason to run more OCR.

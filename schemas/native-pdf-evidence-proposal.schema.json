@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lispmdoc.local/schema/native-pdf-evidence-proposal-1.json",
+  "title": "LMDOC native-PDF evidence proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["disposition", "inventory_sha256", "pages", "pdftotext", "review_project", "schema_version", "source_snapshots"],
+  "properties": {
+    "schema_version": {"const": "lispmdoc-native-pdf-evidence-proposal-1"},
+    "disposition": {"const": "evidence-only-no-ocr"},
+    "inventory_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "pdftotext": {"type": "object"},
+    "review_project": {"type": "string", "pattern": "^[^/].*$"},
+    "source_snapshots": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["byte_size", "manual_id", "path", "sha256"],
+        "properties": {
+          "byte_size": {"type": "integer", "minimum": 1},
+          "manual_id": {"type": "string", "minLength": 1},
+          "path": {"type": "string", "pattern": "^input/[^/]+\\.pdf$"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["comparison", "composition_tags", "findings", "limitations", "manual_id", "page_bounds_pt", "page_class", "poppler", "pypdf", "render", "renderer", "renderer_command", "semantic_assertions", "source_page_index", "source_page_number"],
+        "properties": {
+          "comparison": {"type": "object"},
+          "composition_tags": {"type": "array", "items": {"type": "string"}},
+          "findings": {"type": "array", "items": {"type": "object"}},
+          "limitations": {"type": "array", "items": {"type": "string"}},
+          "manual_id": {"type": "string", "minLength": 1},
+          "page_bounds_pt": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "string"}},
+          "page_class": {"type": "string", "minLength": 1},
+          "poppler": {"type": "object"},
+          "pypdf": {"type": "object"},
+          "render": {"type": "object"},
+          "renderer": {"type": "object"},
+          "renderer_command": {"type": "object"},
+          "semantic_assertions": {"const": []},
+          "source_page_index": {"type": "integer", "minimum": 0},
+          "source_page_number": {"type": "integer", "minimum": 1}
+        }
+      }
+    }
+  }
+}

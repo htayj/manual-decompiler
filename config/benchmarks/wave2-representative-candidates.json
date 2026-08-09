@@ -139,13 +139,13 @@
         {"page_index": 49, "page_class": "hybrid", "tags": ["hybrid", "multi-column-toc-index-list"]}
       ],
       "truth": {
-        "origin": "native-pdf-objects",
+        "origin": "ocr-derived",
         "status": "inventory-only",
         "mapping_gate": "pending",
         "layout_gate": "pending",
         "reading_order_gate": "pending",
         "semantics_gate": "pending",
-        "object_extraction_gate": "pending",
+        "object_extraction_gate": "not-applicable",
         "evidence": null
       }
     }

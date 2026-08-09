@@ -287,3 +287,5 @@ def test_tracked_candidates_use_the_reviewed_representative_pages() -> None:
     assert pages["cadr-schematic"][0].page_index == 1
     assert pages["interlisp-oct-1978"][0].page_index == 99
     assert pages["symbolics-users-guide-jul86"][0].page_index == 49
+    manuals = {manual.manual_id: manual for manual in inventory.manuals}
+    assert manuals["symbolics-users-guide-jul86"].truth.origin == "ocr-derived"

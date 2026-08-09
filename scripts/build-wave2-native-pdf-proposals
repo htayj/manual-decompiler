@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Build no-OCR native-PDF object evidence proposals for Wave-2 candidates."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from lispmdoc.benchmark.native_pdf_proposals import (
+    NativePdfProposalError,
+    build_native_pdf_proposal,
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--inventory",
+        default="config/benchmarks/wave2-representative-candidates.json",
+        help="contained inventory path relative to --root",
+    )
+    parser.add_argument(
+        "--workspace-root",
+        default="work/wave2-native-pdf-proposals",
+        help="new contained, ignored proposal-workspace parent relative to --root",
+    )
+    args = parser.parse_args()
+    try:
+        result = build_native_pdf_proposal(
+            args.root,
+            inventory_path=args.inventory,
+            workspace_root=args.workspace_root,
+        )
+    except NativePdfProposalError as error:
+        parser.error(str(error))
+    print(
+        json.dumps(
+            {
+                "pages": result.pages,
+                "proposal_path": result.proposal_path.as_posix(),
+                "proposal_sha256": result.proposal_sha256,
+                "workspace": result.workspace.as_posix(),
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

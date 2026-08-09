@@ -349,7 +349,7 @@ class Wave2Inventory:
         return cls(tuple(CandidateManual.from_dict(item) for item in manuals))
 
 
-def _read_contained_regular(root: Path, relative: str, label: str) -> bytes:
+def read_contained_regular(root: Path, relative: str, label: str) -> bytes:
     """Read a regular contained file through descriptor-bound, no-follow opens."""
 
     if root.is_symlink() or not root.is_dir():
@@ -390,11 +390,15 @@ def _read_contained_regular(root: Path, relative: str, label: str) -> bytes:
         raise
 
 
+# Kept as a compatibility alias for the initial inventory tests and callers.
+_read_contained_regular = read_contained_regular
+
+
 def load_inventory(root: Path, relative_path: str) -> tuple[Wave2Inventory, bytes]:
     """Read and parse the tracked inventory from the exact bytes that are hashed."""
 
     relative = _safe_relative_path(relative_path, "inventory path")
-    content = _read_contained_regular(root, relative, "inventory")
+    content = read_contained_regular(root, relative, "inventory")
     return Wave2Inventory.from_bytes(content), content
 
 

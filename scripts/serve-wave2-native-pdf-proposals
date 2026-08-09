@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+"""Serve a generated native-PDF evidence review project on localhost only."""
+
+from __future__ import annotations
+
+import argparse
+import http.server
+from pathlib import Path
+
+from lispmdoc.benchmark.native_pdf_review_server import (
+    ReviewServerError,
+    review_handler,
+    sealed_review_root,
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("workspace", type=Path)
+    parser.add_argument("--port", type=int, default=8765)
+    args = parser.parse_args()
+    try:
+        review = sealed_review_root(args.workspace)
+    except ReviewServerError as error:
+        parser.error(str(error))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), review_handler(review))
+    print(f"http://127.0.0.1:{args.port}/index.html")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

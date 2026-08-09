@@ -426,3 +426,13 @@ the remaining composition gaps deterministically. It does not request
 transcription, render pages, or invoke OCR. Recovered source and independent
 adjudication can both become selection-eligible only after their respective
 evidence gates complete; OCR-derived text is never eligible.
+
+The next no-transcription Wave-2 increment generates evidence-only native-PDF
+object proposals for the five K Machine/CLIM inventory pages. It snapshots
+descriptor-verified inputs, preserves pypdf visitor/content-stream and Poppler
+`pdftotext -bbox-layout` witnesses, and records deterministic 300-DPI renders,
+tool identities, raw inventories, and explicit extraction disagreements in a
+new ignored workspace. Its local overlay project supports later layout/order
+review but does not accept text or infer table/diagram semantics. Symbolics
+Users Guide page 49 is correctly retained as an OCR-derived, ineligible
+witness until its Acrobat text layer can be independently proven original.
