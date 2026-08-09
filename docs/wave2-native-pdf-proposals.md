@@ -18,9 +18,21 @@ those snapshots for all subprocess and rendering work.
 
 Before probing or invoking them, the builder snapshots the selected Poppler
 `pdftotext` and PNG renderer into `tools/` as regular, non-symlink files with
-controlled executable mode. Every version probe and extraction/render command
-uses that copied pathname; its digest and command argv are recorded. Changing
-an ambient binary after workspace creation therefore cannot alter its evidence.
+controlled executable mode. It descriptor-reads and hashes those snapshots,
+then executes a fully write-sealed Linux memfd made from those exact bytes;
+the descriptor is explicitly inherited by each subprocess and is closed on
+every success, cache, and error path. The native builder uses the strict
+five-field pathname/digest identity form; the public renderer also preserves
+its legacy exact three-field form, and neither form accepts a caller-supplied
+execution descriptor. Changing a snapshot or ambient binary after preparation
+therefore cannot alter a version probe, extraction, or page render.
+Canonical proposal records name those snapshots with stable workspace-relative
+paths (for example, `tools/pdftoppm`) rather than host paths. The executable
+digest, controlled snapshot bytes, and logical command path bind the actual
+tool without making equivalent workspaces machine- or location-dependent. The
+renderer cache/manifest includes that verified executable SHA-256, so two
+different binaries cannot collide merely by claiming the same logical name and
+version.
 
 Each proposal retains, without text or coordinate cleanup:
 
@@ -42,6 +54,12 @@ outside the page, and raw extraction-order disagreement. Callback coordinates
 are explicitly labelled baseline approximations; neither backend proves visual
 reading order, glyph geometry, table structure, diagram meaning, or semantic
 text.
+
+The pypdf visitor trace stores a recursively canonicalized font dictionary:
+indirect PDF references are represented by object and generation numbers, and
+unsupported pypdf values abort the proposal. It never serializes Python
+`repr()` values carrying reader-instance addresses. Two separately rooted
+equivalent runs must therefore produce byte-identical complete workspaces.
 
 The generated `review/index.html` compares the same page render with numbered
 Poppler boxes (blue) and pypdf visitor-baseline approximations (red dashed),

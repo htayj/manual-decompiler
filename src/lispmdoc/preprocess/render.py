@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 from collections.abc import Iterable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -42,6 +46,23 @@ class SourceChangedDuringRenderError(PreprocessError):
 
 class UnsafeOutputRootError(PreprocessError, ValueError):
     """A generated output root could overlap immutable source material."""
+
+
+@dataclass(slots=True)
+class _SealedExecutable:
+    """One owned Linux execution descriptor containing verified tool bytes."""
+
+    descriptor: int
+    sha256: str
+    byte_size: int
+
+    @property
+    def execution_path(self) -> str:
+        return f"/proc/self/fd/{self.descriptor}"
+
+    def close(self) -> None:
+        with suppress(OSError):
+            os.close(self.descriptor)
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,110 +181,119 @@ def render_pdf(
     source_fingerprint = _source_fingerprint(source_path)
     settings = preprocess_settings or PreprocessSettings()
     settings_digest = canonical_settings_digest(settings)
-    backend = (
-        _validated_backend_override(backend_override)
-        if backend_override
-        else probe_render_backend()
-    )
-    page_infos = _read_pdf_pages(source_path)
-    selected = parse_page_subset(pages, len(page_infos))
-    root = _safe_output_root(Path(output_root), source_path)
-    cache_key = sha256_bytes(
-        _canonical_json(
+    sealed: _SealedExecutable | None = None
+    if backend_override:
+        backend, sealed = _validated_backend_override(backend_override)
+    else:
+        backend = probe_render_backend()
+    try:
+        backend_evidence = _backend_evidence(backend)
+        page_infos = _read_pdf_pages(source_path)
+        selected = parse_page_subset(pages, len(page_infos))
+        root = _safe_output_root(Path(output_root), source_path)
+        cache_key = sha256_bytes(
+            _canonical_json(
+                {
+                    "backend": backend_evidence,
+                    "dpi": dpi,
+                    "pages": list(selected),
+                    "preprocess_settings_sha256": settings_digest,
+                    "source_sha256": source_fingerprint["sha256"],
+                }
+            )
+        )
+        artifact_directory = _safe_child(root, source_fingerprint["sha256"], cache_key)
+        page_directory = _safe_child(artifact_directory, "pages")
+        manifest_path = _safe_child(artifact_directory, "render-manifest.json")
+        if manifest_path.is_file():
+            cached = _read_valid_cache(
+                manifest_path,
+                artifact_directory,
+                source_fingerprint,
+                backend_evidence,
+                dpi,
+                selected,
+                settings_digest,
+            )
+            if cached is not None:
+                _assert_source_unchanged(source_path, source_fingerprint)
+                return RenderResult(cached, artifact_directory, manifest_path, cache_reused=True)
+
+        page_directory.mkdir(parents=True, exist_ok=True)
+        helper_directory = _safe_child(artifact_directory, "ocr-helper")
+        overlay_directory = _safe_child(artifact_directory, "debug")
+        extraction_directory = _safe_child(artifact_directory, "extracted")
+        records: list[dict[str, Any]] = []
+        for number in selected:
+            page_info = page_infos[number - 1]
+            filename = f"p{number:06d}.png"
+            image_path = _safe_child(page_directory, filename)
+            _render_one(source_path, number, dpi, image_path, backend)
+            image_evidence = _inspect_png(image_path)
+            record = _page_record(
+                number=number,
+                source_page=page_info,
+                dpi=dpi,
+                image_relative_path=f"pages/{filename}",
+                image_evidence=image_evidence,
+            )
+            source_to_canonical = AffineTransform.from_dict(
+                record["normalization"]["pixel_to_canonical"]
+            )
+            helper_path = _safe_child(helper_directory, filename)
+            overlay_path = _safe_child(overlay_directory, f"p{number:06d}-overlay.png")
+            preprocessing = preprocess_image(
+                image_path,
+                helper_path,
+                overlay_path,
+                source_to_canonical,
+                settings=settings,
+            )
+            preprocessing["ocr_helper_render"]["path"] = f"ocr-helper/{filename}"
+            preprocessing["debug_overlay"]["path"] = f"debug/p{number:06d}-overlay.png"
+            extraction = extract_simple_page_image(
+                source_path, number, extraction_directory
+            ).to_dict()
+            if extraction["status"] == "extracted":
+                extraction["path"] = f"extracted/{extraction['path']}"
+            record["source_render"] = dict(record["image"])
+            record["ocr_helper_render"] = preprocessing["ocr_helper_render"]
+            record["lossless_page_image"] = extraction
+            record["preprocessing"] = preprocessing
+            record["normalization"]["helper_pixels_to_source_pixels"] = preprocessing[
+                "helper_pixels_to_source_pixels"
+            ]
+            record["normalization"]["helper_pixels_to_canonical"] = preprocessing[
+                "helper_pixels_to_canonical"
+            ]
+            records.append(record)
+        _assert_source_unchanged(source_path, source_fingerprint)
+        manifest = RenderManifest(
             {
-                "backend": backend,
+                "backend": backend_evidence,
                 "dpi": dpi,
-                "pages": list(selected),
+                "normalization": {
+                    "applied": any(record["preprocessing"]["applied"] for record in records),
+                    "source_and_ocr_helper_renders_are_separate": True,
+                },
+                "pages": records,
+                "preprocess_settings": settings.to_dict(),
                 "preprocess_settings_sha256": settings_digest,
-                "source_sha256": source_fingerprint["sha256"],
+                "schema_version": _SCHEMA_VERSION,
+                "selected_pages": list(selected),
+                "source": source_fingerprint,
             }
         )
-    )
-    artifact_directory = _safe_child(root, source_fingerprint["sha256"], cache_key)
-    page_directory = _safe_child(artifact_directory, "pages")
-    manifest_path = _safe_child(artifact_directory, "render-manifest.json")
-    if manifest_path.is_file():
-        cached = _read_valid_cache(
-            manifest_path,
-            artifact_directory,
-            source_fingerprint,
-            backend,
-            dpi,
-            selected,
-            settings_digest,
-        )
-        if cached is not None:
-            _assert_source_unchanged(source_path, source_fingerprint)
-            return RenderResult(cached, artifact_directory, manifest_path, cache_reused=True)
-
-    page_directory.mkdir(parents=True, exist_ok=True)
-    helper_directory = _safe_child(artifact_directory, "ocr-helper")
-    overlay_directory = _safe_child(artifact_directory, "debug")
-    extraction_directory = _safe_child(artifact_directory, "extracted")
-    records: list[dict[str, Any]] = []
-    for number in selected:
-        page_info = page_infos[number - 1]
-        filename = f"p{number:06d}.png"
-        image_path = _safe_child(page_directory, filename)
-        _render_one(source_path, number, dpi, image_path, backend)
-        image_evidence = _inspect_png(image_path)
-        record = _page_record(
-            number=number,
-            source_page=page_info,
-            dpi=dpi,
-            image_relative_path=f"pages/{filename}",
-            image_evidence=image_evidence,
-        )
-        source_to_canonical = AffineTransform.from_dict(
-            record["normalization"]["pixel_to_canonical"]
-        )
-        helper_path = _safe_child(helper_directory, filename)
-        overlay_path = _safe_child(overlay_directory, f"p{number:06d}-overlay.png")
-        preprocessing = preprocess_image(
-            image_path,
-            helper_path,
-            overlay_path,
-            source_to_canonical,
-            settings=settings,
-        )
-        preprocessing["ocr_helper_render"]["path"] = f"ocr-helper/{filename}"
-        preprocessing["debug_overlay"]["path"] = f"debug/p{number:06d}-overlay.png"
-        extraction = extract_simple_page_image(source_path, number, extraction_directory).to_dict()
-        if extraction["status"] == "extracted":
-            extraction["path"] = f"extracted/{extraction['path']}"
-        record["source_render"] = dict(record["image"])
-        record["ocr_helper_render"] = preprocessing["ocr_helper_render"]
-        record["lossless_page_image"] = extraction
-        record["preprocessing"] = preprocessing
-        record["normalization"]["helper_pixels_to_source_pixels"] = preprocessing[
-            "helper_pixels_to_source_pixels"
-        ]
-        record["normalization"]["helper_pixels_to_canonical"] = preprocessing[
-            "helper_pixels_to_canonical"
-        ]
-        records.append(record)
-    _assert_source_unchanged(source_path, source_fingerprint)
-    manifest = RenderManifest(
-        {
-            "backend": backend,
-            "dpi": dpi,
-            "normalization": {
-                "applied": any(record["preprocessing"]["applied"] for record in records),
-                "source_and_ocr_helper_renders_are_separate": True,
-            },
-            "pages": records,
-            "preprocess_settings": settings.to_dict(),
-            "preprocess_settings_sha256": settings_digest,
-            "schema_version": _SCHEMA_VERSION,
-            "selected_pages": list(selected),
-            "source": source_fingerprint,
-        }
-    )
-    _write_manifest(manifest_path, manifest)
-    return RenderResult(manifest, artifact_directory, manifest_path, cache_reused=False)
+        _write_manifest(manifest_path, manifest)
+        return RenderResult(manifest, artifact_directory, manifest_path, cache_reused=False)
+    finally:
+        if sealed is not None:
+            sealed.close()
 
 
-def _validated_backend_override(backend: Mapping[str, str]) -> dict[str, str]:
+def _validated_backend_override(
+    backend: Mapping[str, str],
+) -> tuple[dict[str, Any], _SealedExecutable]:
     """Accept only a fully specified Poppler backend chosen by a caller.
 
     This is intentionally narrower than capability probing: provenance callers
@@ -271,10 +301,14 @@ def _validated_backend_override(backend: Mapping[str, str]) -> dict[str, str]:
     will invoke that exact pathname. The default probe remains unchanged.
     """
 
-    required = {"executable", "name", "version"}
-    if set(backend) != required or any(not isinstance(backend[key], str) for key in required):
+    legacy_required = {"executable", "name", "version"}
+    required = legacy_required | {"executable_sha256", "identity_executable"}
+    if set(backend) not in (legacy_required, required) or any(
+        not isinstance(backend[key], str) for key in backend
+    ):
         raise RenderBackendUnavailableError(
-            "renderer backend override must contain executable/name/version"
+            "renderer backend override must contain executable/executable_sha256/"
+            "identity_executable/name/version"
         )
     name = backend["name"]
     executable = Path(backend["executable"])
@@ -284,7 +318,89 @@ def _validated_backend_override(backend: Mapping[str, str]) -> dict[str, str]:
         raise RenderBackendUnavailableError(
             "renderer backend override must name a regular non-symlink executable"
         )
-    return {key: backend[key] for key in sorted(required)}
+    claimed_digest = backend.get("executable_sha256")
+    if claimed_digest is not None and not re.fullmatch(r"[0-9a-f]{64}", claimed_digest):
+        raise RenderBackendUnavailableError(
+            "renderer backend override executable_sha256 is invalid"
+        )
+    sealed = _seal_verified_executable(executable, claimed_digest)
+    result = {
+        "executable": sealed.execution_path,
+        "executable_sha256": sealed.sha256,
+        "identity_executable": backend.get("identity_executable", backend["executable"]),
+        "name": backend["name"],
+        "version": backend["version"],
+        "_execution_fd": sealed.descriptor,
+    }
+    return result, sealed
+
+
+def _seal_verified_executable(
+    executable: Path, claimed_sha256: str | None = None
+) -> _SealedExecutable:
+    """Copy descriptor-read bytes to a write-sealed Linux memfd for execution.
+
+    The file is opened with ``O_NOFOLLOW`` and never executed by pathname.  The
+    returned descriptor is owned by the caller and must be closed.
+    """
+
+    try:
+        descriptor = os.open(executable, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as error:
+        raise RenderBackendUnavailableError(
+            "cannot descriptor-read renderer backend override"
+        ) from error
+    try:
+        details = os.fstat(descriptor)
+        if not stat.S_ISREG(details.st_mode):
+            raise RenderBackendUnavailableError("renderer backend override is not a regular file")
+        chunks = bytearray()
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.extend(chunk)
+    finally:
+        with suppress(OSError):
+            os.close(descriptor)
+    content = bytes(chunks)
+    digest = sha256_bytes(content)
+    if claimed_sha256 is not None and digest != claimed_sha256:
+        raise RenderBackendUnavailableError("renderer backend override executable digest drifted")
+    try:
+        memfd = os.memfd_create(
+            "lispmdoc-renderer", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
+        )
+    except (AttributeError, OSError) as error:
+        raise RenderBackendUnavailableError("Linux sealed memfd execution is required") from error
+    try:
+        written = 0
+        while written < len(content):
+            count = os.write(memfd, content[written:])
+            if count <= 0:
+                raise OSError("short write while sealing renderer executable")
+            written += count
+        fcntl.fcntl(
+            memfd,
+            fcntl.F_ADD_SEALS,
+            fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL,
+        )
+    except (AttributeError, OSError) as error:
+        with suppress(OSError):
+            os.close(memfd)
+        raise RenderBackendUnavailableError("cannot create sealed renderer executable") from error
+    return _SealedExecutable(memfd, digest, len(content))
+
+
+def _backend_evidence(backend: Mapping[str, Any]) -> dict[str, str]:
+    """Remove the machine-local execution path from cache/manifest identity."""
+
+    return {
+        "executable": backend.get("identity_executable", backend["executable"]),
+        "executable_sha256": backend.get("executable_sha256", "unbound-default-probe"),
+        "name": backend["name"],
+        "version": backend["version"],
+    }
 
 
 def compose_affine(outer: AffineTransform, inner: AffineTransform) -> AffineTransform:
@@ -412,7 +528,7 @@ def _read_pdf_pages(source: Path) -> list[dict[str, Any]]:
 
 
 def _render_one(
-    source: Path, page_number: int, dpi: int, target: Path, backend: dict[str, str]
+    source: Path, page_number: int, dpi: int, target: Path, backend: Mapping[str, Any]
 ) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.unlink(missing_ok=True)
@@ -431,7 +547,9 @@ def _render_one(
             str(source),
             str(target.with_suffix("")),
         ]
-        result = _run(command)
+        raw_fd = backend.get("_execution_fd")
+        fd = raw_fd if isinstance(raw_fd, int) else -1
+        result = _run(command, pass_fds=(fd,) if fd >= 0 else ())
     elif name == "pymupdf":  # pragma: no cover - Poppler available in CI image
         import fitz
 
@@ -628,7 +746,13 @@ def _canonical_json(value: Any) -> bytes:
     )
 
 
-def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
+def _run(command: list[str], *, pass_fds: tuple[int, ...] = ()) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        command, capture_output=True, check=False, encoding="utf-8", errors="replace", text=True
+        command,
+        capture_output=True,
+        check=False,
+        encoding="utf-8",
+        errors="replace",
+        text=True,
+        pass_fds=pass_fds,
     )

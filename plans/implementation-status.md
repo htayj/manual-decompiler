@@ -141,6 +141,15 @@ foundation milestone is not a claim that the full decompiler exists.
   `scripts/ocr-env-doctor`; model weights and container storage remain outside
   Git.
 
+### Wave-2 native-PDF evidence proposals
+
+- The no-OCR native-PDF proposal builder snapshots Poppler tools, records their
+  verified digests, and executes their descriptor-read bytes only through
+  sealed Linux memfds. Renderer overrides accept only legacy three-field or
+  digest-bound five-field public forms; execution descriptors are internal and
+  closed on success, cache reuse, and failure. This preserves a reproducible
+  evidence boundary even if a tool pathname is replaced between pages.
+
 ### Roadmap foundations not yet wired into automatic conversion
 
 - Typed IR, reading-graph, evidence-store, stage-DAG, reconciliation, layout,
@@ -436,3 +445,12 @@ new ignored workspace. Its local overlay project supports later layout/order
 review but does not accept text or infer table/diagram semantics. Symbolics
 Users Guide page 49 is correctly retained as an OCR-derived, ineligible
 witness until its Acrobat text layer can be independently proven original.
+
+The native-PDF proposal workspace is now location-independent as well as
+tool-snapshot-bound: canonical records use logical workspace-relative paths,
+the renderer cache identity excludes only the local execution pathname, and
+pypdf font evidence rejects process-local representations. Separate full
+five-page workspaces have byte-identical complete file inventories; the
+recorded tool snapshot bytes and hashes remain the executable binding.
+The logical renderer identity also includes a descriptor-verified executable
+SHA-256, preventing distinct local binaries from sharing a render cache entry.

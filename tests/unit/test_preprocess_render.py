@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import os
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from lispmdoc.model import AffineTransform
 from lispmdoc.preprocess import (
@@ -12,6 +15,7 @@ from lispmdoc.preprocess import (
     probe_render_backend,
     render_pdf,
 )
+from lispmdoc.preprocess import render as render_module
 
 
 def _write_pdf(path: Path, *, rotate: int = 0) -> None:
@@ -64,6 +68,175 @@ def test_renderer_capability_probe_reports_a_version() -> None:
 
     assert backend["name"] in {"pdftoppm", "pdftocairo", "pymupdf"}
     assert backend["version"]
+
+
+def test_backend_override_legacy_form_and_digest_identity_are_strict(tmp_path: Path) -> None:
+    source = tmp_path / "manual.pdf"
+    _write_pdf(source)
+    first_tool = tmp_path / "renderer-a"
+    second_tool = tmp_path / "renderer-b"
+    first_tool.write_bytes(b"first renderer")
+    second_tool.write_bytes(b"second renderer")
+
+    def fake_render(
+        _source: Path, _page: int, _dpi: int, target: Path, _backend: dict[str, str]
+    ) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (612, 792), "white").save(target)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(render_module, "_render_one", fake_render)
+    try:
+        legacy = {"executable": first_tool.as_posix(), "name": "pdftoppm", "version": "fixture"}
+        first = render_pdf(source, tmp_path / "output", dpi=72, pages=(1,), backend_override=legacy)
+        first_value = first.manifest.to_dict()
+        assert (
+            first_value["backend"]["executable_sha256"]
+            == hashlib.sha256(first_tool.read_bytes()).hexdigest()
+        )
+        with pytest.raises(render_module.RenderBackendUnavailableError, match="digest drifted"):
+            render_pdf(
+                source,
+                tmp_path / "bad",
+                dpi=72,
+                pages=(1,),
+                backend_override={
+                    **legacy,
+                    "identity_executable": "tools/pdftoppm",
+                    "executable_sha256": "0" * 64,
+                },
+            )
+        second = render_pdf(
+            source,
+            tmp_path / "output",
+            dpi=72,
+            pages=(1,),
+            backend_override={
+                "executable": second_tool.as_posix(),
+                "executable_sha256": hashlib.sha256(second_tool.read_bytes()).hexdigest(),
+                "identity_executable": "tools/pdftoppm",
+                "name": "pdftoppm",
+                "version": "fixture",
+            },
+        )
+        assert not second.cache_reused
+        assert first.artifact_directory != second.artifact_directory
+    finally:
+        monkeypatch.undo()
+
+
+def test_strict_override_executes_sealed_bytes_after_pathname_replacement(tmp_path: Path) -> None:
+    source = tmp_path / "manual.pdf"
+    _write_pdf(source)
+    tool = tmp_path / "renderer"
+    original = b"sealed renderer bytes"
+    tool.write_bytes(original)
+    seen: list[tuple[str, bytes]] = []
+
+    def fake_render(
+        _source: Path, page: int, _dpi: int, target: Path, backend: dict[str, object]
+    ) -> None:
+        execution_path = backend["executable"]
+        descriptor = backend["_execution_fd"]
+        assert isinstance(execution_path, str) and isinstance(descriptor, int)
+        seen.append((execution_path, os.pread(descriptor, len(original), 0)))
+        if page == 1:
+            tool.write_bytes(b"attacker replacement")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (612, 792), "white").save(target)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(render_module, "_render_one", fake_render)
+    try:
+        render_pdf(
+            source,
+            tmp_path / "output",
+            dpi=72,
+            backend_override={
+                "executable": tool.as_posix(),
+                "executable_sha256": hashlib.sha256(original).hexdigest(),
+                "identity_executable": "tools/pdftoppm",
+                "name": "pdftoppm",
+                "version": "fixture",
+            },
+        )
+    finally:
+        monkeypatch.undo()
+    assert seen == [(seen[0][0], original), (seen[0][0], original)]
+    assert seen[0][0].startswith("/proc/self/fd/")
+
+
+def test_override_rejects_caller_supplied_execution_fd_and_closes_its_own_fd(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "manual.pdf"
+    _write_pdf(source)
+    tool = tmp_path / "renderer"
+    tool.write_bytes(b"renderer")
+    strict = {
+        "executable": tool.as_posix(),
+        "executable_sha256": hashlib.sha256(tool.read_bytes()).hexdigest(),
+        "identity_executable": "tools/pdftoppm",
+        "name": "pdftoppm",
+        "version": "fixture",
+    }
+    with pytest.raises(render_module.RenderBackendUnavailableError, match="must contain"):
+        render_pdf(
+            source, tmp_path / "bad", dpi=72, backend_override={**strict, "execution_fd": "0"}
+        )
+
+    captured: list[int] = []
+    sealed_descriptors: list[int] = []
+    actual_seal = render_module._seal_verified_executable
+
+    def capture_seal(*args: object, **kwargs: object) -> object:
+        sealed = actual_seal(*args, **kwargs)  # type: ignore[arg-type]
+        sealed_descriptors.append(sealed.descriptor)
+        return sealed
+
+    def fake_render(
+        _source: Path, _page: int, _dpi: int, target: Path, backend: dict[str, object]
+    ) -> None:
+        descriptor = backend["_execution_fd"]
+        assert isinstance(descriptor, int)
+        captured.append(descriptor)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (612, 792), "white").save(target)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(render_module, "_render_one", fake_render)
+    monkeypatch.setattr(render_module, "_seal_verified_executable", capture_seal)
+    try:
+        render_pdf(source, tmp_path / "good", dpi=72, pages=(1,), backend_override=strict)
+        cached = render_pdf(source, tmp_path / "good", dpi=72, pages=(1,), backend_override=strict)
+    finally:
+        monkeypatch.undo()
+    assert cached.cache_reused
+    with pytest.raises(OSError):
+        os.fstat(captured[0])
+    assert len(sealed_descriptors) == 2
+    for descriptor in sealed_descriptors:
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+
+
+def test_sealing_short_write_closes_memfd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tool = tmp_path / "renderer"
+    tool.write_bytes(b"renderer")
+    created: list[int] = []
+    actual_memfd_create = os.memfd_create
+
+    def tracked_memfd_create(name: str, flags: int) -> int:
+        descriptor = actual_memfd_create(name, flags)
+        created.append(descriptor)
+        return descriptor
+
+    monkeypatch.setattr(render_module.os, "memfd_create", tracked_memfd_create)
+    monkeypatch.setattr(render_module.os, "write", lambda _fd, _data: 0)
+    with pytest.raises(render_module.RenderBackendUnavailableError, match="cannot create sealed"):
+        render_module._seal_verified_executable(tool)
+    with pytest.raises(OSError):
+        os.fstat(created[0])
 
 
 def test_render_manifest_records_hashes_dimensions_and_exact_transforms(tmp_path: Path) -> None:

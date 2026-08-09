@@ -15,7 +15,6 @@ import os
 import shutil
 import stat
 import subprocess
-import sys
 from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -25,7 +24,11 @@ from xml.etree import ElementTree
 
 from pypdf import PdfReader
 
-from lispmdoc.preprocess.render import render_pdf
+from lispmdoc.preprocess.render import (
+    RenderBackendUnavailableError,
+    _seal_verified_executable,
+    render_pdf,
+)
 
 from .wave2 import (
     CandidateManual,
@@ -87,12 +90,7 @@ def _binary_bytes(executable: str) -> tuple[dict[str, object], bytes]:
             os.close(descriptor)
         raise
     return (
-        {
-            "invocation_path": executable,
-            "resolved_path": resolved.as_posix(),
-            "sha256": _sha256(content),
-            "byte_size": len(content),
-        },
+        {"sha256": _sha256(content), "byte_size": len(content)},
         content,
     )
 
@@ -119,24 +117,68 @@ def _snapshot_tool(workspace: Path, source_executable: str, name: str) -> str:
     return target.as_posix()
 
 
-def _tool_record(executable: str) -> dict[str, object]:
+def _tool_record(
+    executable: str,
+    logical_executable: str,
+    execution_fd: int | None = None,
+    binary: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     try:
-        completed = subprocess.run([executable, "-v"], text=False, capture_output=True, check=False)
+        completed = subprocess.run(
+            [executable, "-v"],
+            text=False,
+            capture_output=True,
+            check=False,
+            pass_fds=(execution_fd,) if execution_fd is not None else (),
+        )
     except OSError as error:
         raise NativePdfProposalError(f"cannot run tool version probe: {executable}") from error
     return {
-        "binary": _binary_identity(executable),
-        "version_argv": [executable, "-v"],
+        "binary": dict(binary) if binary is not None else _binary_identity(executable),
+        "version_argv": [logical_executable, "-v"],
         "version_returncode": completed.returncode,
         "version_stderr": completed.stderr.decode("utf-8", errors="surrogateescape"),
         "version_stdout": completed.stdout.decode("utf-8", errors="surrogateescape"),
     }
 
 
+def _sealed_execution(executable: str, expected_sha256: str) -> tuple[int, str]:
+    """Use the renderer's descriptor-read, digest-bound sealing primitive."""
+
+    try:
+        sealed = _seal_verified_executable(Path(executable), expected_sha256)
+    except RenderBackendUnavailableError as error:
+        raise NativePdfProposalError(str(error)) from error
+    return sealed.descriptor, sealed.execution_path
+
+
 def _text(value: object) -> str:
     """Preserve pypdf's callback scalar representation without text cleanup."""
 
     return value if isinstance(value, str) else repr(value)
+
+
+def _stable_pdf_object(value: object) -> object:
+    """Serialize pypdf font evidence without its reader-instance identity."""
+
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        return repr(value)
+    if isinstance(value, bytes):
+        return {"bytes_hex": value.hex()}
+    idnum = getattr(value, "idnum", None)
+    generation = getattr(value, "generation", None)
+    if isinstance(idnum, int) and isinstance(generation, int):
+        return {"indirect_object": {"generation": generation, "idnum": idnum}}
+    if isinstance(value, Mapping):
+        return {
+            str(key): _stable_pdf_object(item)
+            for key, item in sorted(value.items(), key=lambda item: str(item[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_stable_pdf_object(item) for item in value]
+    raise NativePdfProposalError(f"unsupported pypdf font object: {type(value).__name__}")
 
 
 def _matrix(value: object) -> list[str]:
@@ -204,7 +246,7 @@ def _pypdf_evidence(reader: PdfReader, page_index: int, directory: Path) -> dict
         visitors.append(
             {
                 "ctm": _matrix(cm),
-                "font": repr(font_dict),
+                "font": _stable_pdf_object(font_dict),
                 "font_size": repr(font_size),
                 "text": _text(text),
                 "text_matrix": _matrix(tm),
@@ -281,7 +323,12 @@ def _poppler_words(raw: bytes) -> list[dict[str, str]]:
 
 
 def _run_poppler(
-    executable: str, snapshot: Path, page_number: int, directory: Path
+    executable: str,
+    snapshot: Path,
+    page_number: int,
+    directory: Path,
+    workspace: Path,
+    execution_fd: int,
 ) -> dict[str, object]:
     output = directory / f"p{page_number:06d}-bbox-layout.html"
     argv = [
@@ -294,7 +341,9 @@ def _run_poppler(
         snapshot.as_posix(),
         output.as_posix(),
     ]
-    completed = subprocess.run(argv, text=False, capture_output=True, check=False)
+    completed = subprocess.run(
+        argv, text=False, capture_output=True, check=False, pass_fds=(execution_fd,)
+    )
     stderr_path = directory / f"p{page_number:06d}-pdftotext.stderr"
     stdout_path = directory / f"p{page_number:06d}-pdftotext.stdout"
     _write_new(stderr_path, completed.stderr)
@@ -304,7 +353,16 @@ def _run_poppler(
     raw = output.read_bytes()
     return {
         "command": {
-            "argv": argv,
+            "argv": [
+                "tools/pdftotext",
+                "-bbox-layout",
+                "-f",
+                str(page_number),
+                "-l",
+                str(page_number),
+                snapshot.relative_to(workspace).as_posix(),
+                output.relative_to(workspace).as_posix(),
+            ],
             "returncode": completed.returncode,
             "stderr": {
                 "path": stderr_path.relative_to(directory.parent).as_posix(),
@@ -423,7 +481,7 @@ def _render_records(
         rendered_png = workspace / str(record["source_render"]["path"])
         record["renderer_command"] = {
             "argv": [
-                backend_override["executable"],
+                backend_override["identity_executable"],
                 "-png",
                 "-singlefile",
                 "-r",
@@ -432,18 +490,15 @@ def _render_records(
                 str(record["page_number"]),
                 "-l",
                 str(record["page_number"]),
-                snapshot.as_posix(),
-                rendered_png.with_suffix("").as_posix(),
+                snapshot.relative_to(workspace).as_posix(),
+                rendered_png.with_suffix("").relative_to(workspace).as_posix(),
             ]
         }
         records[int(record["page_number"])] = record
     backend = manifest["backend"]
     assert isinstance(backend, dict)
-    executable = str(backend["executable"])
-    if executable == "python":
-        executable = os.environ.get("PYTHON_EXECUTABLE") or sys.executable
     renderer = dict(backend)
-    renderer["binary"] = _binary_identity(executable)
+    renderer["binary"] = {"sha256": backend_override["executable_sha256"]}
     renderer["render_manifest"] = result.manifest_path.relative_to(workspace).as_posix()
     return renderer, records
 
@@ -724,12 +779,71 @@ def build_native_pdf_proposal(
     assert ambient_renderer is not None
     poppler = _snapshot_tool(workspace, ambient_poppler, "pdftotext")
     renderer_executable = _snapshot_tool(workspace, ambient_renderer, renderer_name)
-    poppler_record = _tool_record(poppler)
-    renderer_record = _tool_record(renderer_executable)
+    poppler_binary = _binary_identity(poppler)
+    renderer_binary = _binary_identity(renderer_executable)
+    poppler_digest = poppler_binary["sha256"]
+    renderer_digest = renderer_binary["sha256"]
+    assert isinstance(poppler_digest, str) and isinstance(renderer_digest, str)
+    poppler_fd, poppler_exec = _sealed_execution(poppler, poppler_digest)
+    try:
+        return _build_native_pdf_proposal_workspace(
+            workspace=workspace,
+            inventory_path=inventory_path,
+            inventory_bytes=inventory_bytes,
+            sources=sources,
+            poppler_binary=poppler_binary,
+            poppler_digest=poppler_digest,
+            poppler_fd=poppler_fd,
+            poppler_exec=poppler_exec,
+            renderer_binary=renderer_binary,
+            renderer_digest=renderer_digest,
+            renderer_executable=renderer_executable,
+            renderer_name=renderer_name,
+        )
+    finally:
+        with suppress(OSError):
+            os.close(poppler_fd)
+
+
+def _build_native_pdf_proposal_workspace(
+    *,
+    workspace: Path,
+    inventory_path: str,
+    inventory_bytes: bytes,
+    sources: list[tuple[CandidateManual, bytes]],
+    poppler_binary: Mapping[str, object],
+    poppler_digest: str,
+    poppler_fd: int,
+    poppler_exec: str,
+    renderer_binary: Mapping[str, object],
+    renderer_digest: str,
+    renderer_executable: str,
+    renderer_name: str,
+) -> NativePdfProposalResult:
+    """Finish a workspace while the caller owns the sealed pdftotext FD."""
+
+    poppler_record = _tool_record(
+        poppler_exec, "tools/pdftotext", poppler_fd, poppler_binary
+    )
+    renderer_fd, renderer_exec = _sealed_execution(renderer_executable, renderer_digest)
+    try:
+        renderer_record = _tool_record(
+            renderer_exec,
+            f"tools/{renderer_name}",
+            renderer_fd,
+            renderer_binary,
+        )
+    finally:
+        with suppress(OSError):
+            os.close(renderer_fd)
     version_output = renderer_record["version_stderr"] or renderer_record["version_stdout"]
+    renderer_evidence = renderer_record["binary"]
     assert isinstance(version_output, str)
+    assert isinstance(renderer_evidence, dict) and isinstance(renderer_evidence.get("sha256"), str)
     renderer_override = {
         "executable": renderer_executable,
+        "executable_sha256": renderer_evidence["sha256"],
+        "identity_executable": f"tools/{renderer_name}",
         "name": renderer_name,
         "version": version_output.splitlines()[0] if version_output.splitlines() else "unknown",
     }
@@ -766,7 +880,9 @@ def build_native_pdf_proposal(
         for candidate in manual.pages:
             number = candidate.page_index + 1
             pypdf = _pypdf_evidence(reader, candidate.page_index, workspace / "pypdf")
-            poppler_page = _run_poppler(poppler, snapshot, number, workspace / "poppler")
+            poppler_page = _run_poppler(
+                poppler_exec, snapshot, number, workspace / "poppler", workspace, poppler_fd
+            )
             _verify_snapshot(snapshot, manual.source_sha256, manual.source_byte_size)
             page = reader.pages[candidate.page_index]
             bounds = _page_bounds(page)
