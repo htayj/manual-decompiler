@@ -415,3 +415,14 @@ and recoverable typesetter sources should be exhausted before requesting human
 transcription; ambiguous mapping or layout decisions remain review-gated. A
 corpus-wide OCR run should not happen before that benchmark can support
 evidence-backed engine selection.
+
+The first Wave-2 step is now a no-inference representative-candidate inventory.
+It binds the exact local Chinual 4th Edition, K Machine, CLIM 2.0, Interlisp
+October 1978, CADR schematic, and Symbolics July 1986 Users Guide PDFs by path,
+size, SHA-256, and page count. The checker derives authority from explicit
+mapping, layout, reading-order, semantic, and native-object gates, verifies
+the Chinual recovered-source slice through its existing importer, and reports
+the remaining composition gaps deterministically. It does not request
+transcription, render pages, or invoke OCR. Recovered source and independent
+adjudication can both become selection-eligible only after their respective
+evidence gates complete; OCR-derived text is never eligible.

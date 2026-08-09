@@ -1,0 +1,153 @@
+{
+  "format_version": "lispmdoc-wave2-representative-inventory-1",
+  "manuals": [
+    {
+      "manual_id": "cadr-schematic",
+      "source_path": "source-material/bitsavers/pdf/mit/cadr/CADR_schematic.pdf",
+      "source_sha256": "71cd8d8c86ba7cc39528b966f56bae7109a269f410bab9039ca0e4979bfccf13",
+      "source_byte_size": 5375774,
+      "page_count": 97,
+      "intended_page_classes": ["schematic"],
+      "candidate_pages": [
+        {"page_index": 1, "page_class": "schematic", "tags": ["diagram-label-schematic"]}
+      ],
+      "truth": {
+        "origin": "independent-adjudicated",
+        "status": "inventory-only",
+        "mapping_gate": "not-applicable",
+        "layout_gate": "pending",
+        "reading_order_gate": "pending",
+        "semantics_gate": "pending",
+        "object_extraction_gate": "not-applicable",
+        "evidence": null
+      }
+    },
+    {
+      "manual_id": "chinual-4e",
+      "source_path": "source-material/bitsavers/pdf/mit/cadr/chinual_4thEd_Jul81.pdf",
+      "source_sha256": "123ceb361b0c84864425fc7eee319afc9891a7a68e417f93386f8172334a6e85",
+      "source_byte_size": 33853601,
+      "page_count": 544,
+      "intended_page_classes": ["recovered-typesetter-source", "scan-bilevel"],
+      "candidate_pages": [
+        {"page_index": 90, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal"]},
+        {"page_index": 91, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose"]},
+        {"page_index": 92, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal"]},
+        {"page_index": 93, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal", "table"]},
+        {"page_index": 94, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal", "table"]},
+        {"page_index": 95, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal", "math-unusual-glyph"]},
+        {"page_index": 96, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal"]},
+        {"page_index": 97, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal"]},
+        {"page_index": 98, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal"]},
+        {"page_index": 99, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal"]},
+        {"page_index": 100, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal"]},
+        {"page_index": 101, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal"]},
+        {"page_index": 102, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal"]},
+        {"page_index": 103, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal", "table"]},
+        {"page_index": 104, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose"]},
+        {"page_index": 105, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "math-unusual-glyph", "table"]},
+        {"page_index": 106, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal", "math-unusual-glyph", "table"]},
+        {"page_index": 107, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "math-unusual-glyph"]},
+        {"page_index": 108, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose", "code-terminal"]},
+        {"page_index": 109, "page_class": "recovered-typesetter-source", "tags": ["clean-scanned-prose"]}
+      ],
+      "truth": {
+        "origin": "recovered-source-reviewed",
+        "status": "reviewed",
+        "mapping_gate": "verified",
+        "layout_gate": "verified",
+        "reading_order_gate": "not-applicable",
+        "semantics_gate": "verified",
+        "object_extraction_gate": "not-applicable",
+        "evidence": {"kind": "chinual-recovered-slice"}
+      }
+    },
+    {
+      "manual_id": "clim-2",
+      "source_path": "source-material/bitsavers/pdf/symbolics/software/genera_8/Common_Lisp_Interface_Manager__CLIM__Release_2.0.pdf",
+      "source_sha256": "41f54457eceeb875a9f1f2a735b289fcbd4e9ad95dc6a844924192674e40598c",
+      "source_byte_size": 1638498,
+      "page_count": 564,
+      "intended_page_classes": ["born-digital"],
+      "candidate_pages": [
+        {"page_index": 562, "page_class": "born-digital", "tags": ["born-digital", "multi-column-toc-index-list"]}
+      ],
+      "truth": {
+        "origin": "native-pdf-objects",
+        "status": "inventory-only",
+        "mapping_gate": "pending",
+        "layout_gate": "pending",
+        "reading_order_gate": "pending",
+        "semantics_gate": "pending",
+        "object_extraction_gate": "pending",
+        "evidence": null
+      }
+    },
+    {
+      "manual_id": "interlisp-oct-1978",
+      "source_path": "source-material/bitsavers/pdf/xerox/interlisp/Interlisp-Oct_1978.pdf",
+      "source_sha256": "60bf8629b793f642e2eedd0f7b58879fd86d8c6d089e86c307dcd23b3d1380ad",
+      "source_byte_size": 72041768,
+      "page_count": 773,
+      "intended_page_classes": ["scan-color", "scan-gray"],
+      "candidate_pages": [
+        {"page_index": 99, "page_class": "scan-gray", "tags": ["degraded-scanned-prose"]}
+      ],
+      "truth": {
+        "origin": "independent-adjudicated",
+        "status": "inventory-only",
+        "mapping_gate": "not-applicable",
+        "layout_gate": "pending",
+        "reading_order_gate": "pending",
+        "semantics_gate": "pending",
+        "object_extraction_gate": "not-applicable",
+        "evidence": null
+      }
+    },
+    {
+      "manual_id": "k-machine",
+      "source_path": "source-material/bitsavers/pdf/lmi/K-Machine/K_Machine.pdf",
+      "source_sha256": "d014d9f5342a509d4ca329e308fcd842d55f3074089ae986242c4bccae1748dd",
+      "source_byte_size": 450319,
+      "page_count": 126,
+      "intended_page_classes": ["born-digital"],
+      "candidate_pages": [
+        {"page_index": 2, "page_class": "born-digital", "tags": ["born-digital"]},
+        {"page_index": 72, "page_class": "born-digital", "tags": ["born-digital", "code-terminal"]},
+        {"page_index": 90, "page_class": "born-digital", "tags": ["born-digital", "table"]},
+        {"page_index": 95, "page_class": "born-digital", "tags": ["born-digital"]}
+      ],
+      "truth": {
+        "origin": "native-pdf-objects",
+        "status": "inventory-only",
+        "mapping_gate": "pending",
+        "layout_gate": "pending",
+        "reading_order_gate": "pending",
+        "semantics_gate": "pending",
+        "object_extraction_gate": "pending",
+        "evidence": null
+      }
+    },
+    {
+      "manual_id": "symbolics-users-guide-jul86",
+      "source_path": "source-material/bitsavers/pdf/symbolics/software/genera_7/999017_Users_Guide_To_Symbolics_Computers_Jul86.pdf",
+      "source_sha256": "8443be91db37ee70e25eff61c500cb5f265eabc1096072f88d3e4ad44f4d1525",
+      "source_byte_size": 14342359,
+      "page_count": 353,
+      "intended_page_classes": ["hybrid"],
+      "candidate_pages": [
+        {"page_index": 49, "page_class": "hybrid", "tags": ["hybrid", "multi-column-toc-index-list"]}
+      ],
+      "truth": {
+        "origin": "native-pdf-objects",
+        "status": "inventory-only",
+        "mapping_gate": "pending",
+        "layout_gate": "pending",
+        "reading_order_gate": "pending",
+        "semantics_gate": "pending",
+        "object_extraction_gate": "pending",
+        "evidence": null
+      }
+    }
+  ]
+}
