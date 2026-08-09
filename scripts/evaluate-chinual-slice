@@ -1,0 +1,561 @@
+#!/usr/bin/env python3
+"""Measure the reviewed Chinual replica slice without promoting it to replica-ready.
+
+This evaluator binds every conclusion to the saved review projects, manifests,
+and the retained Surya output.  It does not manufacture a visual-fidelity
+metric or treat source-backed text as an independently transcribed benchmark.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+from collections import Counter
+from collections.abc import Mapping
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Any
+
+from lispmdoc.benchmark.spatial_evaluation import semantic_ocr_text
+from lispmdoc.ocr.evaluation import GroundTruthRegion, evaluate_ground_truth
+
+_REVISIONS = (
+    ("r25", "replica-review-r25", "review-project.json", "review-project.annotations.json"),
+    ("r28", "replica-review-r28", "correction-review.json", "correction-review.annotations.json"),
+    ("r30", "replica-review-r30", "final-correction.json", "final-correction.annotations.json"),
+    (
+        "r33",
+        "replica-review-r33",
+        "final-alignment-review.json",
+        "final-alignment-review.annotations.json",
+    ),
+    (
+        "r33-final",
+        "replica-review-r33",
+        "final-byte-review.json",
+        "final-byte-review.annotations.json",
+    ),
+)
+
+
+class _HTMLText(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+
+def _html_text(value: str) -> str:
+    parser = _HTMLText()
+    parser.feed(value)
+    return "".join(parser.parts)
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _contained_file(root: Path, relative: str, label: str) -> Path:
+    candidate = Path(relative)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise ValueError(f"{label} path must stay within its declared root")
+    resolved_root = root.resolve()
+    resolved = (resolved_root / candidate).resolve()
+    if not resolved.is_relative_to(resolved_root) or not resolved.is_file():
+        raise ValueError(f"{label} path must name a file within its declared root")
+    return resolved
+
+
+def _load(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} must contain a JSON object")
+    return value
+
+
+def _page_number(page_id: str) -> int:
+    try:
+        return int(page_id.rsplit("-", 1)[1])
+    except (IndexError, ValueError) as error:
+        raise ValueError(f"invalid review page id: {page_id}") from error
+
+
+def _manifest_pages(manifest: Mapping[str, Any]) -> dict[int, Mapping[str, Any]]:
+    pages = manifest.get("pages")
+    if not isinstance(pages, list):
+        raise ValueError("replica manifest pages must be an array")
+    result: dict[int, Mapping[str, Any]] = {}
+    for page in pages:
+        if not isinstance(page, dict) or not isinstance(page.get("page_number"), int):
+            raise ValueError("replica manifest page must have an integer page_number")
+        result[page["page_number"]] = page
+    if len(result) != len(pages):
+        raise ValueError("replica manifest has duplicate page numbers")
+    return result
+
+
+def _bad_disposition(value: object) -> bool:
+    return value in {"needs-fix", "reject"}
+
+
+def _accepted_pages(annotations: list[Mapping[str, Any]]) -> dict[str, str]:
+    """Apply saved review annotations in chronological order.
+
+    An accepted page covers its regions unless that same saved annotation has a
+    rejecting/needs-fix region.  Later annotations supersede earlier page
+    status only for pages that they mention.
+    """
+
+    status: dict[str, bool] = {}
+    origin: dict[str, str] = {}
+    for annotation in annotations:
+        revision = annotation["revision"]
+        pages = annotation["value"].get("annotations", {}).get("pages", {})
+        if not isinstance(pages, dict):
+            raise ValueError(f"{revision} annotations pages must be an object")
+        for page_id, page in sorted(pages.items()):
+            if not isinstance(page, dict):
+                raise ValueError(f"{revision} annotation {page_id} must be an object")
+            regions = page.get("regions", {})
+            if not isinstance(regions, dict):
+                raise ValueError(f"{revision} annotation {page_id} regions must be an object")
+            page_bad = _bad_disposition(page.get("disposition")) or any(
+                isinstance(region, dict) and _bad_disposition(region.get("disposition"))
+                for region in regions.values()
+            )
+            if page.get("disposition") == "accept" and not page_bad:
+                status[page_id] = True
+                origin[page_id] = revision
+            elif page_bad:
+                status[page_id] = False
+                origin[page_id] = revision
+    return {page_id: origin[page_id] for page_id, accepted in status.items() if accepted}
+
+
+def _assert_annotation_membership(
+    review: Mapping[str, Any], annotations: Mapping[str, Any], revision: str
+) -> None:
+    allowed_dispositions = {"accept", "needs-fix", "reject"}
+    review_pages_value = review.get("pages")
+    annotation_pages = annotations.get("annotations", {}).get("pages", {})
+    if not isinstance(review_pages_value, list) or not isinstance(annotation_pages, dict):
+        raise ValueError(f"{revision} review or annotations pages are invalid")
+    review_pages = {str(page["id"]): page for page in review_pages_value if isinstance(page, dict)}
+    if len(review_pages) != len(review_pages_value):
+        raise ValueError(f"{revision} review has invalid or duplicate pages")
+    extras = sorted(set(annotation_pages) - set(review_pages))
+    if extras:
+        raise ValueError(
+            f"{revision} annotations contain pages absent from review: {', '.join(extras)}"
+        )
+    for page_id, annotation_page in annotation_pages.items():
+        if not isinstance(annotation_page, dict):
+            raise ValueError(f"{revision} annotation {page_id} must be an object")
+        if annotation_page.get("disposition") not in allowed_dispositions:
+            raise ValueError(f"{revision} annotation {page_id} has invalid disposition")
+        region_annotations = annotation_page.get("regions", {})
+        review_regions = review_pages[page_id].get("regions", [])
+        if not isinstance(region_annotations, dict) or not isinstance(review_regions, list):
+            raise ValueError(f"{revision} annotation or review regions are invalid")
+        review_region_ids = {
+            str(region["id"]) for region in review_regions if isinstance(region, dict)
+        }
+        if len(review_region_ids) != len(review_regions):
+            raise ValueError(f"{revision} review {page_id} has invalid or duplicate regions")
+        extra_regions = sorted(set(region_annotations) - review_region_ids)
+        if extra_regions:
+            raise ValueError(
+                f"{revision} annotations contain regions absent from {page_id}: "
+                f"{', '.join(extra_regions)}"
+            )
+        for region_id, region_annotation in region_annotations.items():
+            if not isinstance(region_annotation, dict):
+                raise ValueError(f"{revision} annotation {page_id}/{region_id} must be an object")
+            disposition = region_annotation.get("disposition")
+            if disposition is not None and disposition not in allowed_dispositions:
+                raise ValueError(
+                    f"{revision} annotation {page_id}/{region_id} has invalid disposition"
+                )
+
+
+def _assert_final_replica_acceptance(
+    accepted: Mapping[str, str],
+    revision_pages: Mapping[str, Mapping[int, Mapping[str, Any]]],
+    final_pages: Mapping[int, Mapping[str, Any]],
+) -> None:
+    expected_page_ids = {f"page-{number:06d}" for number in final_pages}
+    if set(accepted) != expected_page_ids:
+        missing = sorted(expected_page_ids - set(accepted))
+        raise ValueError(f"review chain leaves pages without acceptance: {', '.join(missing)}")
+    for page_id, revision in accepted.items():
+        number = _page_number(page_id)
+        accepted_digest = revision_pages[revision][number].get("replica_sha256")
+        final_digest = final_pages[number].get("replica_sha256")
+        if accepted_digest != final_digest:
+            raise ValueError(f"{page_id} accepted {revision} replica differs from final r33 bytes")
+
+
+def _assert_review_assets(
+    root: Path, review: Mapping[str, Any], manifest: Mapping[int, Mapping[str, Any]]
+) -> None:
+    assets = review.get("assets")
+    pages = review.get("pages")
+    if not isinstance(assets, dict) or not isinstance(pages, list):
+        raise ValueError("review project must contain assets and pages")
+    for page in pages:
+        if not isinstance(page, dict):
+            raise ValueError("review page must be an object")
+        number = _page_number(str(page.get("id", "")))
+        expected = manifest.get(number)
+        if expected is None:
+            raise ValueError(f"review page {number} is absent from its manifest")
+        for asset_field, manifest_field in (
+            ("reference_asset_id", "scan_sha256"),
+            ("generated_asset_id", "replica_sha256"),
+        ):
+            asset_id = page.get(asset_field)
+            asset = assets.get(asset_id)
+            if not isinstance(asset, dict):
+                raise ValueError(f"review asset {asset_id!r} is missing")
+            digest = asset.get("sha256")
+            if digest != expected.get(manifest_field):
+                raise ValueError(f"review asset {asset_id!r} differs from {manifest_field}")
+            relative = asset.get("path")
+            if not isinstance(relative, str):
+                raise ValueError(f"review asset {asset_id!r} has no path")
+            path = _contained_file(root, relative, f"review asset {asset_id!r}")
+            if _sha256(path) != digest:
+                raise ValueError(f"review asset {asset_id!r} bytes do not match saved digest")
+
+
+def _overlap(
+    left: tuple[float, float, float, float], right: tuple[float, float, float, float]
+) -> float:
+    return max(0.0, min(left[2], right[2]) - max(left[0], right[0])) * max(
+        0.0, min(left[3], right[3]) - max(left[1], right[1])
+    )
+
+
+def _iou(
+    left: tuple[float, float, float, float], right: tuple[float, float, float, float]
+) -> float:
+    intersection = _overlap(left, right)
+    union = (
+        (left[2] - left[0]) * (left[3] - left[1])
+        + (right[2] - right[0]) * (right[3] - right[1])
+        - intersection
+    )
+    return intersection / union if union else 0.0
+
+
+def _quantile(values: list[float], fraction: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[max(0, math.ceil(len(ordered) * fraction) - 1)]
+
+
+def _surya_metrics(
+    manifest: Mapping[int, Mapping[str, Any]],
+    review_project: Mapping[str, Any],
+    raw: Mapping[str, Any],
+) -> dict[str, object]:
+    review_pages = {_page_number(str(page["id"])): page for page in review_project["pages"]}
+    truth: list[GroundTruthRegion] = []
+    predictions: dict[str, str] = {}
+    ious: list[float] = []
+    matched = 0
+    unassigned_by_page: dict[str, int] = {}
+    inversions = comparable_pairs = 0
+    for number, manifest_page in sorted(manifest.items()):
+        page = review_pages.get(number)
+        key = f"p{number:06d}"
+        raw_page = raw.get(key)
+        if not isinstance(page, dict) or not isinstance(raw_page, list) or len(raw_page) != 1:
+            raise ValueError(f"missing one-page review or Surya result for {key}")
+        blocks = raw_page[0].get("blocks")
+        if not isinstance(blocks, list):
+            raise ValueError(f"Surya blocks missing for {key}")
+        regions = page.get("regions")
+        manifest_regions = manifest_page.get("regions")
+        if not isinstance(regions, list) or not isinstance(manifest_regions, list):
+            raise ValueError(f"regions missing for {key}")
+        source_regions = {str(region["id"]): region for region in regions}
+        assigned: dict[str, list[tuple[str, tuple[float, float, float, float], int]]] = {
+            str(region["region_id"]): [] for region in manifest_regions
+        }
+        unassigned = 0
+        for raw_block in blocks:
+            if not isinstance(raw_block, dict):
+                raise ValueError(f"invalid Surya block for {key}")
+            box = tuple(float(item) for item in raw_block["bbox"])
+            if len(box) != 4:
+                raise ValueError(f"invalid Surya bbox for {key}")
+            candidates = [
+                (_overlap(box, tuple(float(item) for item in region["bbox"])), region)
+                for region in manifest_regions
+            ]
+            candidates = [item for item in candidates if item[0] > 0]
+            if not candidates:
+                unassigned += 1
+                continue
+            _, region = max(candidates, key=lambda item: item[0])
+            assigned[str(region["region_id"])].append(
+                (_html_text(str(raw_block["html"])), box, int(raw_block["reading_order"]))
+            )
+        unassigned_by_page[key] = unassigned
+        orders: list[int] = []
+        for manifest_region in manifest_regions:
+            region_id = str(manifest_region["region_id"])
+            review_region = source_regions.get(region_id)
+            if not isinstance(review_region, dict) or not isinstance(
+                review_region.get("canonical_text"), str
+            ):
+                raise ValueError(f"canonical source text missing for {key}/{region_id}")
+            text = review_region["canonical_text"]
+            if _sha256_text(text) != manifest_region.get("text_sha256"):
+                raise ValueError(f"canonical source text digest differs for {key}/{region_id}")
+            kind = str(manifest_region.get("kind", "body"))
+            namespaced = f"{key}/{region_id}"
+            normalized_truth = semantic_ocr_text(text, kind)
+            truth.append(
+                GroundTruthRegion(
+                    namespaced, normalized_truth, "code" if kind == "code" else "prose"
+                )
+            )
+            lines = sorted(assigned[region_id], key=lambda item: (item[1][1], item[1][0]))
+            separator = "\n" if kind == "code" else " "
+            prediction = separator.join(item[0].strip() for item in lines if item[0].strip())
+            predictions[namespaced] = semantic_ocr_text(prediction, kind)
+            if lines:
+                matched += 1
+                left = min(item[1][0] for item in lines)
+                top = min(item[1][1] for item in lines)
+                right = max(item[1][2] for item in lines)
+                bottom = max(item[1][3] for item in lines)
+                ious.append(
+                    _iou(
+                        tuple(float(item) for item in manifest_region["bbox"]),
+                        (left, top, right, bottom),
+                    )
+                )
+                orders.append(min(item[2] for item in lines))
+        comparable_pairs += len(orders) * (len(orders) - 1) // 2
+        inversions += sum(
+            left > right for index, left in enumerate(orders) for right in orders[index + 1 :]
+        )
+    report = evaluate_ground_truth(truth, predictions).to_dict()
+    return {
+        "alignment": {
+            "content_regions": len(truth),
+            "matched_content_regions": matched,
+            "region_assignment_recall": matched / len(truth) if truth else 1.0,
+            "enclosing_box_iou_mean": sum(ious) / len(ious) if ious else None,
+            "enclosing_box_iou_p05": _quantile(ious, 0.05),
+            "minimum_block_order_inversions_against_manifest_order": inversions,
+            "minimum_block_order_comparable_pairs": comparable_pairs,
+            "unassigned_blocks_by_page": dict(sorted(unassigned_by_page.items())),
+            "unassigned_blocks": sum(unassigned_by_page.values()),
+        },
+        "semantic_whitespace_normalized_metrics": report,
+        "normalization": (
+            "collapse Unicode whitespace for prose, definitions, and headings; "
+            "preserve code whitespace"
+        ),
+        "text_authority": (
+            "source-backed reviewed canonical text; not an independent manual "
+            "transcription benchmark"
+        ),
+    }
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def build_report(root: Path) -> dict[str, object]:
+    slice_root = root / "work/chinual-slice"
+    saved: dict[str, dict[str, Any]] = {}
+    annotation_chain: list[Mapping[str, Any]] = []
+    for revision, directory, review_name, annotations_name in _REVISIONS:
+        directory_path = slice_root / directory
+        manifest_path = directory_path / "replica-manifest.json"
+        review_path = directory_path / review_name
+        annotations_path = directory_path / annotations_name
+        manifest = _load(manifest_path)
+        review = _load(review_path)
+        annotations = _load(annotations_path)
+        if annotations.get("project_sha256") != _sha256(review_path):
+            raise ValueError(f"{revision} annotations do not bind their review project")
+        _assert_annotation_membership(review, annotations, revision)
+        pages = _manifest_pages(manifest)
+        _assert_review_assets(directory_path, review, pages)
+        saved[revision] = {
+            "manifest": manifest,
+            "manifest_path": manifest_path,
+            "review": review,
+            "review_path": review_path,
+            "annotations_path": annotations_path,
+            "pages": pages,
+        }
+        annotation_chain.append({"revision": revision, "value": annotations})
+
+    final_pages = saved["r33"]["pages"]
+    for revision, item in saved.items():
+        pages = item["pages"]
+        if set(pages) != set(final_pages):
+            raise ValueError(f"{revision} manifest page set differs from r33")
+        for number, final_page in final_pages.items():
+            page = pages[number]
+            for field in ("scan_sha256",):
+                if page.get(field) != final_page.get(field):
+                    raise ValueError(f"{revision} page {number} differs in {field}")
+        if item["manifest"].get("source_pdf_sha256") != saved["r33"]["manifest"].get(
+            "source_pdf_sha256"
+        ):
+            raise ValueError(f"{revision} source PDF differs from r33")
+
+    accepted = _accepted_pages(annotation_chain)
+    _assert_final_replica_acceptance(
+        accepted,
+        {revision: item["pages"] for revision, item in saved.items()},
+        final_pages,
+    )
+
+    raw_path = slice_root / "surya/pages/results.json"
+    raw = _load(raw_path)
+    if _sha256(raw_path) != saved["r33"]["manifest"].get("layout_results_sha256"):
+        raise ValueError("retained Surya output does not match final layout-results digest")
+    final_manifest = saved["r33"]["manifest"]
+    pdf_path = root / "source-material/bitsavers/pdf/mit/cadr/chinual_4thEd_Jul81.pdf"
+    if _sha256(pdf_path) != final_manifest.get("source_pdf_sha256"):
+        raise ValueError("source PDF bytes do not match final manifest")
+    proposals_path = slice_root / "source-alignment-proposals-v7.json"
+    if _sha256(proposals_path) != final_manifest.get("proposals_sha256"):
+        raise ValueError("source-alignment proposals do not match final manifest")
+    source_root = root / "source-material/reference-transcriptions/unlambda/extracted/lmman/orig4ed"
+    variables_path = source_root / "manual.vars"
+    if _sha256(variables_path) != final_manifest.get("manual_vars_sha256"):
+        raise ValueError("manual.vars bytes do not match final manifest")
+    source_files = final_manifest.get("source_files")
+    if not isinstance(source_files, dict):
+        raise ValueError("final manifest source_files must be an object")
+    for relative, digest in sorted(source_files.items()):
+        if not isinstance(relative, str) or not isinstance(digest, str):
+            raise ValueError("final manifest source file entry is invalid")
+        if _sha256(_contained_file(source_root, relative, "source file")) != digest:
+            raise ValueError(f"source file bytes do not match final manifest: {relative}")
+    final_project = _load(slice_root / "replica-review-r33/review-project.json")
+    surya = _surya_metrics(final_pages, final_project, raw)
+    region_kinds = Counter(
+        str(region["kind"]) for page in final_pages.values() for region in page["regions"]
+    )
+    return {
+        "format_version": "lispmdoc-chinual-slice-evaluation-1",
+        "disposition": "review-required",
+        "disposition_reason": (
+            "layout review is complete for this source-backed slice, but the "
+            "replacement-ready gates are not measured or satisfied"
+        ),
+        "inputs": {
+            "source_pdf_sha256": saved["r33"]["manifest"].get("source_pdf_sha256"),
+            "final_manifest": {
+                "path": "work/chinual-slice/replica-review-r33/replica-manifest.json",
+                "sha256": _sha256(saved["r33"]["manifest_path"]),
+            },
+            "surya_raw": {
+                "path": "work/chinual-slice/surya/pages/results.json",
+                "sha256": _sha256(raw_path),
+                "engine_identity": "not retained with this slice raw output",
+            },
+            "review_chain": [
+                {
+                    "revision": revision,
+                    "review_sha256": _sha256(item["review_path"]),
+                    "annotations_sha256": _sha256(item["annotations_path"]),
+                }
+                for revision, item in saved.items()
+            ],
+        },
+        "human_layout_review": {
+            "accepted_pages": len(accepted),
+            "accepted_regions": sum(len(page["regions"]) for page in final_pages.values()),
+            "accepted_page_revisions": dict(sorted(accepted.items())),
+            "note": (
+                "Acceptance is chained through r25, r28, r30, and both r33 focused "
+                "reviews; every accepted revision's scan/replica digest matches final r33."
+            ),
+        },
+        "layout_inventory": {
+            "pages": len(final_pages),
+            "regions_by_kind": dict(sorted(region_kinds.items())),
+        },
+        "surya_source_backed_spatial_ocr": surya,
+        "evidence_gaps": [
+            (
+                "No geometry-bearing Tesseract or PaddleOCR raw output is retained for "
+                "this 20-page slice; no cross-engine comparison or engine selection is "
+                "claimed."
+            ),
+            (
+                "The retained Surya slice output has no engine/model/version identity "
+                "record; its bytes are digest-bound but provenance is incomplete."
+            ),
+            (
+                "Source-backed reviewed canonical text is not an independent manual-"
+                "transcription benchmark, so these OCR metrics do not establish corpus "
+                "OCR thresholds or confidence bounds."
+            ),
+            (
+                "The evaluator binds canonical text to manifest text digests and "
+                "rehashes the cited source files, but does not independently re-extract "
+                "each source span."
+            ),
+            (
+                "The reviewed region boxes were initialized from this retained Surya "
+                "layout output; assignment recall and IoU measure internal association "
+                "consistency, not independent layout accuracy."
+            ),
+            (
+                "Reading-order consistency compares manifest region order with only "
+                "each region's minimum Surya block order; it does not detect interleaved "
+                "multi-block regions."
+            ),
+            (
+                "No region-aware visual SSIM/edge, baseline/line-break, accessibility, "
+                "size, independent-second-review, or clean-build attestation metric is "
+                "supplied here."
+            ),
+        ],
+        "replacement_ready": False,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--project-root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--output", type=Path, help="default: work/chinual-slice/replica-review-r33/evaluation.json"
+    )
+    args = parser.parse_args()
+    root = args.project_root.resolve()
+    output = args.output or Path("work/chinual-slice/replica-review-r33/evaluation.json")
+    if not output.is_absolute():
+        output = root / output
+    if output.exists():
+        raise FileExistsError(f"refusing to overwrite evaluation output: {output}")
+    report = build_report(root)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("x", encoding="utf-8") as stream:
+        json.dump(report, stream, ensure_ascii=False, indent=2, sort_keys=True)
+        stream.write("\n")
+    print(output)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

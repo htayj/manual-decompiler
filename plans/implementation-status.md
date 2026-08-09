@@ -309,12 +309,30 @@ review-project SHA-256 is
 `6ba660618a4cc2e846568544e8bf01e424ab394c984887f2d26e0796fb2fd0df`.
 The focused human review accepted both corrected regions and page 95 as a
 whole, completing layout review of the 20-page source-backed replica slice.
+An exact-byte audit then found that pages 92, 104, and 106 had changed after
+their earlier acceptance. A final focused review accepted all three pages
+against the r33 assets, so every page approval is now bound to the exact final
+replica digest.
+
+The deterministic slice evaluator merges all five digest-bound review
+snapshots and refuses stale, out-of-project, or incomplete acceptance. It also
+rehashes the actual PDF, proposals, variables, and recovered source files. Its
+source-backed, whitespace-normalized Surya measurement reports 1.0850% CER,
+0.6259% WER, 92.0513% exact code-token
+accuracy, and zero silently omitted regions across 269 regions. It also reports
+all 100 unassigned blocks rather than silently discarding them. These results
+do not meet the provisional clean-prose or code-token selection gates. The
+report explicitly records that the canonical text is source-backed rather than
+an independent transcription, the region geometry originated from the same
+Surya layout, and the retained output lacks engine/model/version identity.
+Two independent evaluations are byte-identical at SHA-256
+`07f89a555715e3ae10f81519cbf571bbf9a5f7a2ef1bb32ba789344e51d981a6`.
 
 ## Current automated verification
 
 ```text
 uv run pytest -q
-244 passed
+249 passed
 
 uv run ruff check .
 All checks passed
@@ -330,9 +348,9 @@ tracked working tree clean after the recorded commit
 
 - Representative English benchmark corpus. One recovered-source scan page is
   authoritative-ready and a 20-page expansion has accepted source mapping, a
-  replica draft, first-two-page feedback, and a complete machine-vision region
-  pass; the expansion still needs completion of independent human layout
-  review and scored evaluation.
+  final-byte-reviewed replica, a complete machine-vision region pass, and a
+  source-backed scored evaluation. It is still not an independent
+  manual-transcription benchmark and cannot select a corpus-wide engine.
 - Evidence-backed OCR engine selection by page class.
 - Automatic integration of preprocessing proposals into conversion. The
   foundation supports conservative deskew/border operations and explicit
@@ -352,6 +370,7 @@ tracked working tree clean after the recorded commit
   clean-environment reproducibility checks.
 - Replacement-ready conformance.
 
-The next implementation milestone is measured evaluation of the reviewed
-20-page source-backed replica slice. A corpus-wide OCR run should not happen
-before a representative English benchmark exists.
+The next implementation milestone is a representative English benchmark with
+retained engine/model identities and geometry-bearing outputs from at least two
+OCR engines. A corpus-wide OCR run should not happen before that benchmark can
+support evidence-backed engine selection.
