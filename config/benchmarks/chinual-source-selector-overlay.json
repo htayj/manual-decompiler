@@ -1,0 +1,96 @@
+{
+  "format_version": "lispmdoc-chinual-source-selector-overlay-1",
+  "r33_manifest_sha256": "3e68b9dd0c0f1f6d2609ff66fc7cde15c73d711918fcf861c6d3269f96ec64c3",
+  "selectors": [
+    {
+      "page_number": 93,
+      "region_id": "block-015",
+      "region_kind": "body",
+      "source_path": "resour.15",
+      "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+      "source_span": [16, 21],
+      "selector": {"kind": "rendered-character-range", "start": 0, "end": 378},
+      "selected_text_sha256": "e5cd3cb4f47b6a005809c0e9dc98d10e7a3831ecdb050c285362fa783c22f3d3"
+    },
+    {
+      "page_number": 94,
+      "region_id": "block-001",
+      "region_kind": "body",
+      "source_path": "resour.15",
+      "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+      "source_span": [21, 24],
+      "selector": {"kind": "rendered-character-range", "start": 25, "end": 216},
+      "selected_text_sha256": "d8673313dfeb2f4914a074178971f2c04316e865a7422b0bbaebda29098d740a"
+    },
+    {
+      "page_number": 94,
+      "region_id": "block-006",
+      "region_kind": "body",
+      "source_path": "resour.15",
+      "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+      "source_span": [57, 57],
+      "selector": {"kind": "directive-component", "directive": "defspec", "component": "role"},
+      "selected_text_sha256": "a56cbda5455d714a1772225aea2851c9f4136727ddc9c7d7cf4ad2423339dc28"
+    },
+    {
+      "page_number": 94,
+      "region_id": "block-012",
+      "region_kind": "body",
+      "source_path": "resour.15",
+      "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+      "source_span": [79, 85],
+      "selector": {"kind": "directive-component", "directive": "kitem", "component": "label-and-following-prose-character-range", "start": 0, "end": 368},
+      "selected_text_sha256": "fcd245f516d9615378c4e01e5b96fa87be38d861ec8800f867ab6a7e9e4cf611"
+    },
+    {
+      "page_number": 95,
+      "region_id": "block-001",
+      "region_kind": "body",
+      "source_path": "resour.15",
+      "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+      "source_span": [85, 86],
+      "selector": {"kind": "rendered-character-range", "start": 17, "end": 132},
+      "selected_text_sha256": "a952b841ccc69b321defb9fa34d559eb65cd486cfd78f344fc68ca0f164e8e2a"
+    },
+    {
+      "page_number": 96,
+      "region_id": "block-018",
+      "region_kind": "function",
+      "source_path": "resour.15",
+      "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+      "source_span": [191, 191],
+      "selector": {"kind": "directive-component", "directive": "defspec", "component": "token-range", "start": 0, "end": 2},
+      "selected_text_sha256": "213f81c2f596bb9a4e43bee247b9aea09c1a2d5c32e85d7f4d3fc1d5702d2129"
+    },
+    {
+      "page_number": 96,
+      "region_id": "block-019",
+      "region_kind": "function",
+      "source_path": "resour.15",
+      "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+      "source_span": [191, 191],
+      "selector": {"kind": "directive-component", "directive": "defspec", "component": "token-range", "start": 2, "end": 3},
+      "selected_text_sha256": "62a5b1ff8ee5693d70860a344c500ef68ac0693a842fe2896046ada017f233da"
+    },
+    {
+      "page_number": 96,
+      "region_id": "block-020",
+      "region_kind": "body",
+      "source_path": "resour.15",
+      "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+      "source_span": [191, 191],
+      "selector": {"kind": "directive-component", "directive": "defspec", "component": "role"},
+      "selected_text_sha256": "a56cbda5455d714a1772225aea2851c9f4136727ddc9c7d7cf4ad2423339dc28"
+    },
+    {
+      "page_number": 106,
+      "region_id": "block-015",
+      "region_kind": "body",
+      "source_path": "fd_num.77",
+      "source_sha256": "4034697aad093031421ccb2ad80e95b4fece06bf27fe374c949b7998074e92a3",
+      "source_span": [193, 193],
+      "selector": {"kind": "directive-component", "directive": "defspec", "component": "role"},
+      "selected_text_sha256": "a56cbda5455d714a1772225aea2851c9f4136727ddc9c7d7cf4ad2423339dc28"
+    }
+  ]
+}

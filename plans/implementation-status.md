@@ -314,7 +314,8 @@ their earlier acceptance. A final focused review accepted all three pages
 against the r33 assets, so every page approval is now bound to the exact final
 replica digest.
 
-The deterministic slice evaluator merges all five digest-bound review
+Historical pre-r5/pre-integration evaluation: the deterministic slice evaluator
+then merged all five digest-bound review
 snapshots and refuses stale, out-of-project, or incomplete acceptance. It also
 rehashes the actual PDF, proposals, variables, and recovered source files. Its
 source-backed, whitespace-normalized Surya measurement reports 1.0850% CER,
@@ -329,17 +330,17 @@ Two independent evaluations are byte-identical at SHA-256
 `07f89a555715e3ae10f81519cbf571bbf9a5f7a2ef1bb32ba789344e51d981a6`.
 
 A fail-closed recovered-source importer now re-extracts every cited Bolio span
-instead of trusting replica-manifest text digests. Its initial pass exposed 41
-derivation disagreements across 14 pages. A receipt-bound source-only counter
-model now proves all 12 numbered headings from the recovered fourth-edition
-build order, chapter/section directives, `manual.vars` anchors, and exact
-source bytes. It refuses ambiguous later wildcard inputs. This leaves 29
-disagreements across 9 provisional pages: 9 regions whose inclusive source
-line cannot exactly represent the stored fragment and 20 regions that agree
-only after explicit layout-whitespace normalization. Eleven pages now
-reproduce every stored region digest and qualify as authoritative. The
-importer still emits a deterministic 20-page Wave-1 queue with source-semantic
-composition tags and cannot silently promote provisional pages.
+instead of trusting replica-manifest text digests. Its source-only counter
+model proves all 12 numbered headings from recovered fourth-edition build
+order, chapter/section directives, `manual.vars` anchors, and exact source
+bytes. A tracked, exact-cohort whitespace overlay then proves the remaining 20
+stored-vs-fresh differences as permitted r33 physical projections, while the
+fresh Bolio bytes remain benchmark semantic text. The importer binds the
+overlay SHA-256, manifest/review identities, per-kind policy, and both text
+digests; missing, extra, duplicate, or drifted receipts abort import. All 20
+pages are now authoritative with zero unresolved disagreements; diagnosis
+retains the 20 rows under resolved physical projections rather than its
+unresolved section.
 
 A fail-closed runner now supports page subsets and no-overwrite Surya/Paddle
 run records. The hardened `ocr-rerun-r5` completed all 20 pages with Surya
@@ -358,27 +359,27 @@ evidence; neither ordinary ignored run directory is an immutable archive.
 The tracked r5 receipt externally anchors the ignored run roots. The
 fail-closed evaluator rehashes those roots and raw files, rejects symlinked or
 unreceipted substitutions, and binds the exact reviewed r33 geometry manifest.
-On the 11 authoritative pages, Surya/Paddle respectively measure 1.185%/1.658%
-semantic CER, 0.535%/5.401% semantic WER, and 87.70%/88.89% exact code-token
-accuracy. Both engines assigned text to every reviewed content region and each
-left 55 raw lines unassigned. That assignment rate is explicitly not a layout
-quality score. The 9 provisional pages remain exploratory, and the evaluator
-correctly leaves engine selection at `not-selected`.
+On all 20 authoritative pages, Surya/Paddle respectively measure
+1.0088%/1.9796% semantic CER, 0.5443%/5.7967% semantic WER, and 92.05%/86.41%
+exact code-token accuracy. Both engines assigned text to every reviewed content
+region and each left 100 raw lines unassigned. That assignment rate is
+explicitly not a layout-quality score. The evaluator correctly leaves engine
+selection at `not-selected`.
 
 ## Current automated verification
 
 ```text
 uv run pytest -q
-298 passed
+316 passed
 
 uv run ruff check .
 All checks passed
 
 uv run mypy src/lispmdoc
-Success: no issues found in 86 source files
+Success: no issues found in 88 source files
 
-git status --short
-tracked working tree clean after the recorded commit
+git diff --check
+no whitespace errors in the inspected diff
 ```
 
 ## Not yet implemented
@@ -407,10 +408,10 @@ tracked working tree clean after the recorded commit
   clean-environment reproducibility checks.
 - Replacement-ready conformance.
 
-The next implementation milestone is resolving the 9 source-span representation
-gaps and deciding how the canonical model should retain 20 scan-layout
-whitespace normalizations without confusing semantic truth with physical
-layout. Expansion beyond this slice still needs a representative English
-benchmark and human mapping/layout approval. A corpus-wide OCR run should not
-happen before that benchmark can support
+The next implementation milestone is expanding beyond this source-backed slice
+to a representative English benchmark with independent truth and adjudicated
+layout evidence across the page classes in the corpus. Existing transcriptions
+and recoverable typesetter sources should be exhausted before requesting human
+transcription; ambiguous mapping or layout decisions remain review-gated. A
+corpus-wide OCR run should not happen before that benchmark can support
 evidence-backed engine selection.

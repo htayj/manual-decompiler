@@ -2,8 +2,8 @@
 """Fail-closed geometry/text evaluation for the sealed Chinual OCR r5 run.
 
 This is deliberately an evaluator, not an engine selector.  Freshly recovered
-source text is split into authoritative and provisional strata before any
-metric is calculated; the latter is reported as an exploratory comparison.
+source text remains the semantic channel; digest-bound physical projections
+are recorded separately before any metric is calculated.
 """
 
 from __future__ import annotations
@@ -372,9 +372,18 @@ def _score_page(
     matched = 0
     for region in record.regions:
         selected = sorted(assigned[region.region_id], key=lambda item: (item[1][1], item[1][0]))
-        separator = "\n" if region.kind == "code" else " "
-        prediction = separator.join(text.strip() for text, _ in selected if text.strip())
         kind = "code" if region.kind == "code" else "prose"
+        if kind == "code":
+            # HTML block wrappers may add terminal newlines, but spaces and tabs
+            # are semantic code indentation.  Preserve those bytes and every
+            # internal raw newline; semantic_ocr_text only normalizes newline
+            # spelling and removes the outer wrapper newlines.
+            parts = [text.strip("\r\n") for text, _ in selected]
+            prediction = "\n".join(part for part in parts if part)
+        else:
+            # Keep the historical prose treatment: layout whitespace is
+            # discarded before the prose semantic normalizer collapses it.
+            prediction = " ".join(text.strip() for text, _ in selected if text.strip())
         truth.append(
             GroundTruthRegion(
                 f"p{record.page_number:06d}/{region.region_id}",
@@ -422,7 +431,7 @@ def _engine_report(
             "eligibility": "metric-eligible"
             if disposition == "authoritative"
             else "exploratory-only",
-            "label": "fresh-source-and-review-agree"
+            "label": "fresh-source-semantic-with-exact-or-receipted-r33-physical-text"
             if disposition == "authoritative"
             else "fresh-source-disagrees-with-stored-final-manifest-text",
             "normalization": (
@@ -481,9 +490,9 @@ def build_report(root: Path, run_directory: Path | None = None) -> dict[str, obj
         "engine_selection": {
             "disposition": "not-selected",
             "reason": (
-                "Some source/review-agreeing pages are authoritative while the remaining "
-                "pages are explicitly exploratory, and no independent human truth, acceptance "
-                "thresholds, or adjudicated layout benchmark exists."
+                "The recovered semantic channel is source-derived and its separately recorded "
+                "physical r33 projections are not independent human truth; no acceptance "
+                "thresholds or adjudicated layout benchmark exists."
             ),
         },
         "inputs": {
@@ -498,6 +507,18 @@ def build_report(root: Path, run_directory: Path | None = None) -> dict[str, obj
                 "order_sha256": recovered.section_counter_order_sha256,
                 "receipt_sha256": recovered.section_counter_receipt_sha256,
                 "ti_script_sha256": recovered.section_counter_ti_script_sha256,
+            },
+            "source_selector_overlay": {
+                "applied_selectors": [
+                    selector.identity() for selector in recovered.applied_source_selectors
+                ],
+                "sha256": recovered.source_selector_overlay_sha256,
+            },
+            "whitespace_projection_overlay": {
+                "applied_receipts": [
+                    receipt.to_dict() for receipt in recovered.applied_whitespace_receipts
+                ],
+                "sha256": recovered.whitespace_overlay_sha256,
             },
         },
         "recovered_truth": {
@@ -514,8 +535,8 @@ def build_report(root: Path, run_directory: Path | None = None) -> dict[str, obj
             ),
         },
         "limitations": [
-            "Provisional source comparisons are not authoritative truth and cannot support "
-            "engine selection.",
+            "Source-derived semantic text and r33 physical projections are not independent "
+            "human truth and cannot support engine selection.",
             "Spatial association is overlap-based against reviewed replica boxes, not "
             "independently adjudicated layout truth.",
             "No independent double transcription, confidence calibration, table-cell "

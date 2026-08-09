@@ -8,7 +8,6 @@ import pytest
 
 from lispmdoc.benchmark.bolio_counters import derive_ti4ed_section_numbers
 from lispmdoc.benchmark.chinual_recovered import (
-    _DERIVATION_CLASSIFICATION,
     ChinualImportError,
     _mapping_evidence,
     diagnose_chinual_derivation_disagreements,
@@ -21,6 +20,22 @@ _LIVE_MANIFEST = _LIVE_ROOT / "work/chinual-slice/replica-review-r33/replica-man
 
 def _sha(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _projection_entry(kind: str, semantic: str, physical: str) -> dict[str, object]:
+    policy = (
+        "code-leading-indent-projection-v1"
+        if kind == "code"
+        else "prose-layout-whitespace-projection-v1"
+    )
+    return {
+        "page_number": 1,
+        "region_id": "block-001",
+        "kind": kind,
+        "policy": policy,
+        "semantic_sha256": _sha(semantic.encode("utf-8")),
+        "physical_sha256": _sha(physical.encode("utf-8")),
+    }
 
 
 def _json(path: Path, value: object) -> None:
@@ -62,6 +77,8 @@ def _fixture(
     review_source_override: str | None = None,
     scan_ocr_override: str | None = None,
     mapping_text: str | None = None,
+    source_selectors: list[dict[str, object]] | None = None,
+    whitespace_entries: list[dict[str, object]] | None = None,
 ) -> None:
     source_root = root / "source-material/reference-transcriptions/unlambda/extracted/lmman/orig4ed"
     source_root.mkdir(parents=True)
@@ -176,6 +193,29 @@ def _fixture(
         "review-project.annotations.json",
         final_review_page,
     )
+    _json(
+        root / "config/benchmarks/chinual-source-selector-overlay.json",
+        {
+            "format_version": "lispmdoc-chinual-source-selector-overlay-1",
+            "r33_manifest_sha256": _sha(
+                (slice_root / "replica-review-r33/replica-manifest.json").read_bytes()
+            ),
+            "selectors": source_selectors or [],
+        },
+    )
+    _json(
+        root / "config/benchmarks/chinual-r33-whitespace-overlay.json",
+        {
+            "format_version": "lispmdoc-chinual-whitespace-overlay-1",
+            "r33_manifest_sha256": _sha(
+                (slice_root / "replica-review-r33/replica-manifest.json").read_bytes()
+            ),
+            "r33_review_sha256": _sha(
+                (slice_root / "replica-review-r33/review-project.json").read_bytes()
+            ),
+            "entries": whitespace_entries or [],
+        },
+    )
 
 
 def test_imports_fresh_bolio_text_into_authoritative_wave1_queue(tmp_path: Path) -> None:
@@ -186,12 +226,10 @@ def test_imports_fresh_bolio_text_into_authoritative_wave1_queue(tmp_path: Path)
     assert result.queue_pages[0].tags == ("clean-scanned-prose",)
 
 
-def test_text_digest_disagreement_is_provisional_not_stored_truth(tmp_path: Path) -> None:
+def test_text_digest_disagreement_without_a_receipt_fails_closed(tmp_path: Path) -> None:
     _fixture(tmp_path, stale_text=True)
-    result = import_chinual_recovered_slice(tmp_path)
-    assert result.records[0].disposition == "provisional"
-    assert result.records[0].regions[0].literal_text == "Hello recovered source."
-    assert "fresh Bolio extraction" in result.evidence_gaps[0]
+    with pytest.raises(ChinualImportError, match="whitespace projection overlay"):
+        import_chinual_recovered_slice(tmp_path)
 
 
 def test_stale_final_source_file_fails_closed(tmp_path: Path) -> None:
@@ -266,6 +304,88 @@ def test_import_consumes_initial_source_buffer_after_mutation_window(
     assert result.records[0].regions[0].literal_text == "Hello recovered source."
 
 
+def test_exact_source_selector_promotes_a_manifest_bound_fragment(tmp_path: Path) -> None:
+    source = b"Hello recovered source.\n"
+    selected = "Hello"
+    _fixture(
+        tmp_path,
+        source_override=source,
+        stored_text_override=selected.encode("utf-8"),
+        source_selectors=[
+            {
+                "page_number": 1,
+                "region_id": "block-001",
+                "region_kind": "body",
+                "source_path": "page.1",
+                "source_sha256": _sha(source),
+                "source_span": [1, 1],
+                "selector": {"kind": "rendered-character-range", "start": 0, "end": 5},
+                "selected_text_sha256": _sha(selected.encode("utf-8")),
+            }
+        ],
+    )
+
+    result = import_chinual_recovered_slice(tmp_path)
+
+    assert result.records[0].disposition == "authoritative"
+    assert result.records[0].regions[0].literal_text == selected
+    assert [(item.page_number, item.region_id) for item in result.applied_source_selectors] == [
+        (1, "block-001")
+    ]
+
+
+def test_selector_output_or_unused_target_fails_closed(tmp_path: Path) -> None:
+    _fixture(tmp_path)
+    overlay_path = tmp_path / "config/benchmarks/chinual-source-selector-overlay.json"
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    overlay["selectors"] = [
+        {
+            "page_number": 1,
+            "region_id": "absent",
+            "region_kind": "body",
+            "source_path": "page.1",
+            "source_sha256": _sha(b"Hello recovered source.\n"),
+            "source_span": [1, 1],
+            "selector": {"kind": "rendered-character-range", "start": 0, "end": 5},
+            "selected_text_sha256": _sha(b"Hello"),
+        }
+    ]
+    _json(overlay_path, overlay)
+    with pytest.raises(ChinualImportError, match="targets absent from final manifest"):
+        import_chinual_recovered_slice(tmp_path)
+
+
+def test_selector_rejects_line_break_projection_for_code_region(tmp_path: Path) -> None:
+    source = b".lisp\nHello\nsource\n.end_lisp\n"
+    _fixture(
+        tmp_path,
+        kind="code",
+        source_override=source,
+        source_span=(1, 4),
+        stored_text_override=b"Hello source",
+        source_selectors=[
+            {
+                "page_number": 1,
+                "region_id": "block-001",
+                "region_kind": "code",
+                "source_path": "page.1",
+                "source_sha256": _sha(source),
+                "source_span": [1, 4],
+                "selector": {
+                    "kind": "rendered-character-range",
+                    "start": 0,
+                    "end": 12,
+                    "projection": "line-breaks-to-spaces",
+                },
+                "selected_text_sha256": _sha(b"Hello source"),
+            }
+        ],
+    )
+
+    with pytest.raises(ChinualImportError, match="cannot select exact source component"):
+        import_chinual_recovered_slice(tmp_path)
+
+
 @pytest.mark.skipif(
     not _LIVE_MANIFEST.is_file(),
     reason="ignored Chinual corpus is unavailable in this checkout",
@@ -296,60 +416,28 @@ def test_live_chinual_counter_applies_the_twelve_resolved_heading_ids() -> None:
 
     assert observed == expected
     assert len(result.applied_section_proofs) == 12
-    assert len(result.authoritative_pages) == 11
+    assert len(result.authoritative_pages) == 20
+    assert len(result.applied_whitespace_receipts) == 20
 
 
-def test_derivation_diagnosis_labels_asymmetric_text_witnesses_unbound(tmp_path: Path) -> None:
-    _fixture(
-        tmp_path,
-        stale_text=True,
-        review_source_override="independent review source witness",
-    )
-    report = diagnose_chinual_derivation_disagreements(tmp_path)
-    mismatch = report["mismatches"][0]
-    assert report["summary"]["stored_digest_bound_count"] == 1
-    assert mismatch["category"] == "unresolved"
-    assert mismatch["stored_r33_text"] == "Stored review text."
-    assert mismatch["unbound_review_source_text_witness"] == "independent review source witness"
-    assert mismatch["unbound_scan_ocr_text_witness"] == "Stored review text."
-    assert mismatch["witness_binding"]["source_text"].startswith("unbound")
-    assert mismatch["fresh_bolio_interval"] == "Hello recovered source."
-
-
-def test_mapping_report_does_not_promote_page_wide_substring_to_region_binding(
+def test_valid_whitespace_receipt_promotes_semantic_text_without_rewriting_it(
     tmp_path: Path,
 ) -> None:
-    _fixture(tmp_path, stale_text=True, mapping_text="Hello recovered source.")
-    report = diagnose_chinual_derivation_disagreements(tmp_path)
-    mapping = report["mismatches"][0]["mapping_revisions"]
-    assert mapping["r1"]["page"]["accepted"] is True
-    assert mapping["r1"]["exact_region"] == {
-        "accepted": False,
-        "disposition": "absent",
-        "present": False,
-    }
-    assert "fresh_interval_occurs" not in mapping["r1"]
-
-
-@pytest.mark.parametrize("disposition", (None, "reject"))
-def test_mapping_report_marks_missing_or_rejected_page_annotation_not_accepted(
-    tmp_path: Path, disposition: str | None
-) -> None:
-    _fixture(tmp_path, stale_text=True)
-    annotations_path = (
-        tmp_path / "work/chinual-slice/mapping-review-r1/review-project.annotations.json"
+    semantic = "Hello recovered source."
+    physical = "Hello   recovered source."
+    _fixture(
+        tmp_path,
+        stored_text_override=physical.encode("utf-8"),
+        whitespace_entries=[_projection_entry("body", semantic, physical)],
     )
-    annotations = json.loads(annotations_path.read_text(encoding="utf-8"))
-    pages = annotations["annotations"]["pages"]
-    if disposition is None:
-        pages.clear()
-    else:
-        pages["page-000001"]["disposition"] = disposition
-    _json(annotations_path, annotations)
+    imported = import_chinual_recovered_slice(tmp_path)
+    assert imported.records[0].disposition == "authoritative"
+    assert imported.records[0].regions[0].literal_text == semantic
+    assert len(imported.applied_whitespace_receipts) == 1
     report = diagnose_chinual_derivation_disagreements(tmp_path)
-    page = report["mismatches"][0]["mapping_revisions"]["r1"]["page"]
-    assert page["accepted"] is False
-    assert page["disposition"] == ("absent" if disposition is None else "reject")
+    assert report["mismatches"] == []
+    assert report["summary"]["resolved_projection_count"] == 1
+    assert report["resolved_projections"][0]["physical_r33_text"] == physical
 
 
 def test_mapping_annotation_mutation_after_import_is_rejected(tmp_path: Path) -> None:
@@ -365,64 +453,48 @@ def test_mapping_annotation_mutation_after_import_is_rejected(tmp_path: Path) ->
         _mapping_evidence(tmp_path, imported, 1, "block-001")
 
 
-def test_existing_ledger_key_becomes_unresolved_when_scan_witness_drifts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_whitespace_overlay_rejects_extra_or_mutated_receipts(tmp_path: Path) -> None:
+    semantic = "Hello recovered source."
+    physical = "Hello   recovered source."
     _fixture(
         tmp_path,
-        source_override=b".lisp\nHello recovered source.\n.end_lisp\n",
-        source_span=(1, 3),
+        stored_text_override=physical.encode("utf-8"),
+        whitespace_entries=[_projection_entry("body", semantic, physical)],
+    )
+    overlay_path = tmp_path / "config/benchmarks/chinual-r33-whitespace-overlay.json"
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    overlay["entries"].append({**overlay["entries"][0], "region_id": "extra"})
+    _json(overlay_path, overlay)
+    with pytest.raises(ChinualImportError, match="whitespace projection overlay"):
+        import_chinual_recovered_slice(tmp_path)
+
+
+def test_whitespace_overlay_rejects_mutated_semantic_digest(tmp_path: Path) -> None:
+    semantic = "Hello recovered source."
+    physical = "Hello   recovered source."
+    _fixture(
+        tmp_path,
+        stored_text_override=physical.encode("utf-8"),
+        whitespace_entries=[_projection_entry("body", semantic, physical)],
+    )
+    overlay_path = tmp_path / "config/benchmarks/chinual-r33-whitespace-overlay.json"
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    overlay["entries"][0]["semantic_sha256"] = "0" * 64
+    _json(overlay_path, overlay)
+    with pytest.raises(ChinualImportError, match="whitespace projection overlay"):
+        import_chinual_recovered_slice(tmp_path)
+
+
+def test_code_projection_rejects_internal_whitespace_change(tmp_path: Path) -> None:
+    semantic = "  (hello world)\n"
+    physical = "\t(hello  world)\n"
+    _fixture(
+        tmp_path,
         kind="code",
-        stored_text_override=b"Hello   recovered source.",
-        scan_ocr_override="Hello recovered source.",
+        source_override=b".lisp\n  (hello world)\n.end_lisp\n",
+        source_span=(1, 3),
+        stored_text_override=physical.encode("utf-8"),
+        whitespace_entries=[_projection_entry("code", semantic, physical)],
     )
-    monkeypatch.setitem(
-        _DERIVATION_CLASSIFICATION,
-        (1, "block-001"),
-        ("layout-whitespace-normalization", "test layout witness"),
-    )
-    assert diagnose_chinual_derivation_disagreements(tmp_path)["mismatches"][0]["category"] == (
-        "layout-whitespace-normalization"
-    )
-    review_path = tmp_path / "work/chinual-slice/replica-review-r33/review-project.json"
-    review = json.loads(review_path.read_text(encoding="utf-8"))
-    review["pages"][0]["regions"][0]["ocr_text"] = "unrelated witness"
-    _json(review_path, review)
-    mismatch = diagnose_chinual_derivation_disagreements(tmp_path)["mismatches"][0]
-    assert mismatch["category"] == "unresolved"
-    assert (
-        mismatch["classification_predicates"]["scan_canonical_token_similarity_at_least_0_90"]
-        is False
-    )
-
-
-def test_existing_span_ledger_key_rejects_an_arbitrary_interior_truncation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _fixture(tmp_path, stored_text_override=b"recovered")
-    monkeypatch.setitem(
-        _DERIVATION_CLASSIFICATION,
-        (1, "block-001"),
-        ("source-span-not-exact", "test fragment witness"),
-    )
-    mismatch = diagnose_chinual_derivation_disagreements(tmp_path)["mismatches"][0]
-    assert mismatch["category"] == "unresolved"
-    assert mismatch["classification_predicates"]["proper_prefix_or_suffix"] is False
-
-
-def test_existing_layout_ledger_key_rejects_arbitrary_body_whitespace(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _fixture(
-        tmp_path,
-        stored_text_override=b"Hello   recovered source.",
-        scan_ocr_override="Hello recovered source.",
-    )
-    monkeypatch.setitem(
-        _DERIVATION_CLASSIFICATION,
-        (1, "block-001"),
-        ("layout-whitespace-normalization", "test layout witness"),
-    )
-    mismatch = diagnose_chinual_derivation_disagreements(tmp_path)["mismatches"][0]
-    assert mismatch["category"] == "unresolved"
-    assert mismatch["classification_predicates"]["source_has_structural_layout_signal"] is False
+    with pytest.raises(ChinualImportError, match="whitespace projection overlay"):
+        import_chinual_recovered_slice(tmp_path)

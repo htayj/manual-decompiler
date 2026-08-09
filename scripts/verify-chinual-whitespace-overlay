@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Verify the tracked semantic/physical whitespace overlay against r33 evidence."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from lispmdoc.benchmark.chinual_recovered import (
+    import_chinual_recovered_slice,
+)
+from lispmdoc.benchmark.whitespace_projection import (
+    ProjectionSubject,
+    WhitespaceProjectionError,
+    read_contained_overlay,
+    sha256_bytes,
+    validate_overlay,
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--overlay",
+        type=Path,
+        default=Path("config/benchmarks/chinual-r33-whitespace-overlay.json"),
+    )
+    args = parser.parse_args()
+    root = args.root.resolve()
+    try:
+        imported = import_chinual_recovered_slice(root)
+        review = {
+            (region.page_number, region.region_id): region
+            for region in imported.final_review_regions
+        }
+        receipt_keys = {
+            (receipt.page_number, receipt.region_id)
+            for receipt in imported.applied_whitespace_receipts
+        }
+        subjects: list[ProjectionSubject] = []
+        for page in imported.records:
+            for region in page.regions:
+                key = page.page_number, region.region_id
+                if region.stored_text_sha256 == region.extracted_text_sha256:
+                    continue
+                review_region = review.get(key)
+                if review_region is None:
+                    raise WhitespaceProjectionError(
+                        f"r33 review omits p{page.page_number}/{region.region_id}"
+                    )
+                subjects.append(
+                    ProjectionSubject(
+                        page.page_number,
+                        region.region_id,
+                        region.kind,
+                        region.literal_text,
+                        review_region.canonical_text,
+                    )
+                )
+        overlay, overlay_bytes = read_contained_overlay(root, args.overlay)
+        selected = {
+            (entry["page_number"], entry["region_id"])
+            for entry in overlay["entries"]
+            if isinstance(entry, dict)
+        }
+        if selected != receipt_keys:
+            raise WhitespaceProjectionError(
+                "whitespace overlay keys do not exactly match the applied receipt cohort"
+            )
+        receipts = validate_overlay(
+            overlay,
+            subjects,
+            r33_manifest_sha256=imported.final_manifest_sha256,
+            r33_review_sha256=imported.final_review_sha256,
+        )
+    except (WhitespaceProjectionError, ValueError) as error:
+        parser.error(str(error))
+    print(
+        json.dumps(
+            {
+                "format_version": "lispmdoc-chinual-whitespace-receipt-1",
+                "r33_manifest_sha256": imported.final_manifest_sha256,
+                "r33_review_sha256": imported.final_review_sha256,
+                "whitespace_overlay_sha256": sha256_bytes(overlay_bytes),
+                "receipt_count": len(receipts),
+                "receipts": [receipt.to_dict() for receipt in receipts],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

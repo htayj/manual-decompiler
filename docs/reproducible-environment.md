@@ -145,17 +145,18 @@ selection, and ordinary ignored run files are not an immutable archive.
 The tracked receipt `config/benchmarks/chinual-r5-receipt.json` anchors the
 otherwise ignored r5 run, plan, preflight, evidence seal, and raw inventory by
 size and SHA-256. `uv run scripts/evaluate-chinual-r5` requires that receipt,
-rehashes its complete inputs, and keeps authoritative and provisional pages in
-separate metric strata. A second tracked
+rehashes its complete inputs and records each digest-bound whitespace receipt
+alongside the semantic metrics. A second tracked
 receipt, `config/benchmarks/chinual-ti4ed-counter-receipt.json`, now binds the
 recovered fourth-edition source order, variables, source bytes, and all 47
 source-only heading-number proofs through `fd_num.77`. Twelve exact proofs
 resolve every numbered-heading disagreement without consulting OCR or replica
-text, raising the authoritative stratum to 11 pages and leaving 9 provisional
-pages with 29 disagreements. On the current authoritative stratum,
-Surya/Paddle respectively measure 1.185%/1.658% semantic CER,
-0.535%/5.401% semantic WER, and 87.70%/88.89% exact code-token accuracy. These
-11 pages are metric-eligible but insufficient for engine selection. The
+text. The tracked whitespace overlay then proves all 20 remaining
+stored-vs-fresh differences as r33 physical projections without changing the
+fresh semantic text. On all 20 authoritative pages, Surya/Paddle respectively
+measure 1.0088%/1.9796% semantic CER, 0.5443%/5.7967% semantic WER, and
+92.05%/86.41% exact code-token accuracy. These pages are metric-eligible but
+remain insufficient for engine selection. The
 reported nonempty-region assignment rate is not a layout-quality metric, and
 the evaluation retains all unassigned raw lines for inspection.
 

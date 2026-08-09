@@ -133,7 +133,7 @@ def test_surya_html_preserves_br_and_block_line_boundaries() -> None:
     assert evaluator._html_text("<div>one<br>two</div><p>three</p>") == "one\ntwo\nthree\n"
 
 
-def test_code_predictions_preserve_line_boundaries_and_omit_unassigned_lines() -> None:
+def test_code_predictions_preserve_indent_line_boundaries_and_unassigned_lines() -> None:
     evaluator = _module()
     from lispmdoc.benchmark.chinual_recovered import ChinualPageRecord, ChinualRegionRecord
     from lispmdoc.benchmark.wave1 import QueuePage
@@ -141,7 +141,7 @@ def test_code_predictions_preserve_line_boundaries_and_omit_unassigned_lines() -
     region = ChinualRegionRecord(
         "block-001",
         "code",
-        "(one)\n(two)",
+        "  (one)\n\t(two)",
         "source",
         1,
         2,
@@ -160,9 +160,46 @@ def test_code_predictions_preserve_line_boundaries_and_omit_unassigned_lines() -
     truth, predictions, matched, unassigned = evaluator._score_page(
         record,
         {"regions": [{"region_id": "block-001", "bbox": [0, 0, 10, 10]}]},
-        (("(one)", (1, 1, 4, 2)), ("(two)", (1, 3, 4, 4)), ("header", (20, 1, 25, 2))),
+        (
+            ("\n  (one)\n", (1, 1, 4, 2)),
+            ("\t(two)\n", (1, 3, 4, 4)),
+            ("header", (20, 1, 25, 2)),
+        ),
     )
     assert truth[0].kind == "code"
-    assert predictions["p000091/block-001"] == "(one)\n(two)"
+    assert predictions["p000091/block-001"] == "  (one)\n\t(two)"
     assert matched == 1
     assert unassigned == [{"bbox": [20, 1, 25, 2], "text": "header"}]
+
+
+def test_prose_predictions_keep_historical_whitespace_treatment() -> None:
+    evaluator = _module()
+    from lispmdoc.benchmark.chinual_recovered import ChinualPageRecord, ChinualRegionRecord
+    from lispmdoc.benchmark.wave1 import QueuePage
+
+    region = ChinualRegionRecord(
+        "block-001",
+        "body",
+        "one two",
+        "source",
+        1,
+        1,
+        "a" * 64,
+        "a" * 64,
+        "authoritative",
+        False,
+    )
+    record = ChinualPageRecord(
+        91,
+        QueuePage("a" * 64, 90, "b" * 64, "recovered", ("clean-scanned-prose",), ("block-001",)),
+        "authoritative",
+        (region,),
+        (),
+    )
+    _, predictions, _, _ = evaluator._score_page(
+        record,
+        {"regions": [{"region_id": "block-001", "bbox": [0, 0, 10, 10]}]},
+        (("  one  ", (1, 1, 4, 2)), ("\ttwo\n", (1, 3, 4, 4))),
+    )
+
+    assert predictions["p000091/block-001"] == "one two"

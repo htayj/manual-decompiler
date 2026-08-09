@@ -25,7 +25,22 @@ from .bolio_counters import (
     derive_ti4ed_section_numbers_from_buffers,
     verify_ti4ed_counter_receipt,
 )
+from .source_selectors import (
+    SourceSelector,
+    SourceSelectorError,
+    load_source_selector_overlay,
+    select_source_text,
+    selector_overlay_sha256,
+)
 from .wave1 import QueuePage
+from .whitespace_projection import (
+    ProjectionReceipt,
+    ProjectionSubject,
+    WhitespaceProjectionError,
+    read_contained_overlay,
+    sha256_bytes,
+    validate_overlay,
+)
 
 
 class ChinualImportError(ValueError):
@@ -352,6 +367,10 @@ class ChinualRecoveredImport:
     section_counter_manual_vars_sha256: str
     section_counter_receipt_sha256: str
     applied_section_proofs: tuple[SectionNumberProof, ...]
+    source_selector_overlay_sha256: str
+    applied_source_selectors: tuple[SourceSelector, ...]
+    whitespace_overlay_sha256: str
+    applied_whitespace_receipts: tuple[ProjectionReceipt, ...]
 
     @property
     def queue_pages(self) -> tuple[QueuePage, ...]:
@@ -372,6 +391,18 @@ class ChinualRecoveredImport:
                 "receipt_sha256": self.section_counter_receipt_sha256,
                 "ti_script_sha256": self.section_counter_ti_script_sha256,
                 "applied_proofs": [proof.to_dict() for proof in self.applied_section_proofs],
+            },
+            "source_selector_overlay": {
+                "applied_selectors": [
+                    selector.identity() for selector in self.applied_source_selectors
+                ],
+                "sha256": self.source_selector_overlay_sha256,
+            },
+            "whitespace_projection_overlay": {
+                "applied_receipts": [
+                    receipt.to_dict() for receipt in self.applied_whitespace_receipts
+                ],
+                "sha256": self.whitespace_overlay_sha256,
             },
             "pages": [
                 {
@@ -476,9 +507,9 @@ def _final_review_regions(
 def import_chinual_recovered_slice(project_root: Path) -> ChinualRecoveredImport:
     """Import the accepted 20-page slice, rejecting any stale or incomplete chain.
 
-    ``authoritative`` means final review evidence and fresh Bolio text agree.
-    ``provisional`` means all byte/review gates passed but at least one stored
-    region digest disagreed with that fresh extraction.
+    Fresh Bolio text is the semantic channel.  A stored r33 text disagreement
+    is authoritative only when the digest-bound whitespace overlay validates
+    that stored text as a permitted physical projection of that fresh text.
     """
     root = project_root.resolve()
     if project_root.is_symlink() or not root.is_dir():
@@ -492,6 +523,20 @@ def import_chinual_recovered_slice(project_root: Path) -> ChinualRecoveredImport
     final_manifest, final_manifest_bytes = _load_bytes(final_manifest_path)
     final_manifest_sha256 = _sha256_bytes(final_manifest_bytes)
     final_pages = _pages(final_manifest, "r33 manifest")
+    try:
+        selector_overlay_value, selector_overlay_bytes = _load_bytes(
+            _contained(
+                root,
+                "config/benchmarks/chinual-source-selector-overlay.json",
+                "source selector overlay",
+            )
+        )
+        selector_overlay = load_source_selector_overlay(
+            selector_overlay_value, manifest_sha256=final_manifest_sha256
+        )
+    except SourceSelectorError as error:
+        raise ChinualImportError("cannot load digest-bound source selector overlay") from error
+    source_selector_overlay_digest = selector_overlay_sha256(selector_overlay_bytes)
     final_review_path = slice_root / "replica-review-r33/review-project.json"
     final_review, final_review_bytes = _load_bytes(final_review_path)
     final_review_sha256 = _sha256_bytes(final_review_bytes)
@@ -624,7 +669,13 @@ def import_chinual_recovered_slice(project_root: Path) -> ChinualRecoveredImport
         raise ChinualImportError("cannot decode digest-bound manual.vars") from error
     source_cache: dict[str, tuple[str, Any, str]] = {}
     records: list[ChinualPageRecord] = []
+    projection_subjects: list[ProjectionSubject] = []
+    review_by_key = {
+        (item.page_number, item.region_id): item for item in final_review_regions
+    }
     applied_section_proofs: list[SectionNumberProof] = []
+    applied_source_selectors: list[SourceSelector] = []
+    unused_source_selector_keys = {selector.key for selector in selector_overlay.selectors}
     gaps: list[str] = []
     source_pdf_digest = _digest(final_manifest.get("source_pdf_sha256"), "source PDF digest")
     for number, page in sorted(final_pages.items()):
@@ -717,18 +768,56 @@ def import_chinual_recovered_slice(project_root: Path) -> ChinualRecoveredImport
                 ) from error
             if not literal:
                 raise ChinualImportError(f"cited Bolio span is empty for page {number}/{region_id}")
-            stored = _digest(raw_region.get("text_sha256"), "r33 region text_sha256")
-            extracted = _sha256_bytes(literal.encode("utf-8"))
-            matched = stored == extracted
-            if not matched:
-                page_gaps.append(
-                    f"{region_id}: final manifest text digest disagrees with fresh Bolio extraction"
-                )
             block_kinds = {
                 block.kind
                 for block in extraction.blocks
                 if block.span.start_line <= span[1] and span[0] <= block.span.end_line
             }
+            stored = _digest(raw_region.get("text_sha256"), "r33 region text_sha256")
+            selector = selector_overlay.selector_for(number, region_id)
+            if selector is not None:
+                if (
+                    selector.source_path != source_path
+                    or selector.start_line != span[0]
+                    or selector.end_line != span[1]
+                    or selector.region_kind != kind
+                ):
+                    raise ChinualImportError(
+                        f"source selector does not bind manifest span for {number}/{region_id}"
+                    )
+                try:
+                    literal = select_source_text(
+                        selector,
+                        source_sha256=source_sha256,
+                        source_text=source_text,
+                        rendered_interval=literal,
+                        region_kind=kind,
+                        has_table_semantics="list-item" in block_kinds,
+                    )
+                except SourceSelectorError as error:
+                    raise ChinualImportError(
+                        f"cannot select exact source component for {number}/{region_id}"
+                    ) from error
+                if _sha256_bytes(literal.encode("utf-8")) != stored:
+                    raise ChinualImportError(
+                        "source selector output does not match final manifest for "
+                        f"{number}/{region_id}"
+                    )
+                unused_source_selector_keys.remove(selector.key)
+                applied_source_selectors.append(selector)
+            extracted = _sha256_bytes(literal.encode("utf-8"))
+            matched = stored == extracted
+            if not matched:
+                review_region = review_by_key.get((number, region_id))
+                if review_region is None:
+                    raise ChinualImportError(
+                        f"r33 review omits text evidence for {number}/{region_id}"
+                    )
+                projection_subjects.append(
+                    ProjectionSubject(
+                        number, region_id, kind, literal, review_region.canonical_text
+                    )
+                )
             regions.append(
                 ChinualRegionRecord(
                     region_id,
@@ -756,8 +845,69 @@ def import_chinual_recovered_slice(project_root: Path) -> ChinualRecoveredImport
             ChinualPageRecord(number, queue, disposition, tuple(regions), tuple(page_gaps))
         )
         gaps.extend(f"page {number}: {gap}" for gap in page_gaps)
+    if unused_source_selector_keys:
+        raise ChinualImportError(
+            "source selector overlay has targets absent from final manifest: "
+            f"{sorted(unused_source_selector_keys)!r}"
+        )
+    try:
+        whitespace_overlay, whitespace_overlay_bytes = read_contained_overlay(
+            root, Path("config/benchmarks/chinual-r33-whitespace-overlay.json")
+        )
+        whitespace_overlay_digest = sha256_bytes(whitespace_overlay_bytes)
+        applied_whitespace_receipts = validate_overlay(
+            whitespace_overlay,
+            projection_subjects,
+            r33_manifest_sha256=final_manifest_sha256,
+            r33_review_sha256=final_review_sha256,
+        )
+    except WhitespaceProjectionError as error:
+        raise ChinualImportError(
+            "cannot validate digest-bound whitespace projection overlay"
+        ) from error
+    receipt_keys = {
+        (receipt.page_number, receipt.region_id) for receipt in applied_whitespace_receipts
+    }
+    resolved_records: list[ChinualPageRecord] = []
+    gaps = []
+    for record in records:
+        resolved_regions = tuple(
+            ChinualRegionRecord(
+                region.region_id,
+                region.kind,
+                region.literal_text,
+                region.source_path,
+                region.start_line,
+                region.end_line,
+                region.stored_text_sha256,
+                region.extracted_text_sha256,
+                (
+                    "authoritative"
+                    if region.stored_text_sha256 == region.extracted_text_sha256
+                    or (record.page_number, region.region_id) in receipt_keys
+                    else "provisional"
+                ),
+                region.has_table_semantics,
+            )
+            for region in record.regions
+        )
+        resolved_page_gaps = tuple(
+            f"{region.region_id}: final manifest text digest disagrees with fresh Bolio extraction"
+            for region in resolved_regions
+            if region.disposition != "authoritative"
+        )
+        disposition = "authoritative" if not resolved_page_gaps else "provisional"
+        resolved = ChinualPageRecord(
+            record.page_number,
+            record.queue_page,
+            disposition,
+            resolved_regions,
+            resolved_page_gaps,
+        )
+        resolved_records.append(resolved)
+        gaps.extend(f"page {record.page_number}: {gap}" for gap in resolved_page_gaps)
     return ChinualRecoveredImport(
-        tuple(records),
+        tuple(resolved_records),
         tuple(review_digests),
         tuple(gaps),
         final_manifest_sha256,
@@ -769,6 +919,10 @@ def import_chinual_recovered_slice(project_root: Path) -> ChinualRecoveredImport
         counters.manual_vars_sha256,
         counter_receipt_sha256,
         tuple(applied_section_proofs),
+        source_selector_overlay_digest,
+        tuple(applied_source_selectors),
+        whitespace_overlay_digest,
+        applied_whitespace_receipts,
     )
 
 
@@ -1175,12 +1329,31 @@ def diagnose_chinual_derivation_disagreements(project_root: Path) -> dict[str, o
         for region in page.regions:
             key = (region.source_path, region.start_line, region.end_line)
             same_span_counts[key] = same_span_counts.get(key, 0) + 1
+    receipt_by_key = {
+        (receipt.page_number, receipt.region_id): receipt
+        for receipt in imported.applied_whitespace_receipts
+    }
     rows: list[dict[str, object]] = []
+    projections: list[dict[str, object]] = []
     for page in imported.records:
         for region in page.regions:
             if region.stored_text_sha256 == region.extracted_text_sha256:
                 continue
             evidence = review[(page.page_number, region.region_id)]
+            receipt = receipt_by_key.get((page.page_number, region.region_id))
+            if receipt is not None:
+                projections.append(
+                    {
+                        "fresh_bolio_interval": region.literal_text,
+                        "fresh_bolio_sha256": region.extracted_text_sha256,
+                        "page_number": page.page_number,
+                        "physical_r33_text": evidence.canonical_text,
+                        "physical_r33_text_sha256": region.stored_text_sha256,
+                        "receipt": receipt.to_dict(),
+                        "region_id": region.region_id,
+                    }
+                )
+                continue
             source_lines = _source_span_lines(root, region, source_files)
             category, reason, predicates = _classify_disagreement(
                 key=(page.page_number, region.region_id),
@@ -1229,11 +1402,25 @@ def diagnose_chinual_derivation_disagreements(project_root: Path) -> dict[str, o
     return {
         "final_manifest_sha256": imported.final_manifest_sha256,
         "final_review_sha256": imported.final_review_sha256,
+        "source_selector_overlay": {
+            "applied_selectors": [
+                selector.identity() for selector in imported.applied_source_selectors
+            ],
+            "sha256": imported.source_selector_overlay_sha256,
+        },
+        "whitespace_projection_overlay": {
+            "applied_receipts": [
+                receipt.to_dict() for receipt in imported.applied_whitespace_receipts
+            ],
+            "sha256": imported.whitespace_overlay_sha256,
+        },
         "format_version": "lispmdoc-chinual-derivation-diagnosis-1",
         "mismatches": rows,
+        "resolved_projections": projections,
         "summary": {
             "category_counts": counts,
             "mismatch_count": len(rows),
+            "resolved_projection_count": len(projections),
             "stored_digest_bound_count": sum(
                 bool(row["stored_text_digest_matches_manifest"]) for row in rows
             ),
