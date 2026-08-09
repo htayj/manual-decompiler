@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lispmdoc.local/schema/native-pdf-authority-receipt-1.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "status", "evidence"],
+  "properties": {"schema_version":{"const":"lispmdoc-native-pdf-authority-receipt-1"},"status":{"enum":["pending","accepted"]},"evidence":{}},
+  "allOf": [
+    {"if":{"properties":{"status":{"const":"pending"}}},"then":{"properties":{"evidence":{"const":null}}}},
+    {"if":{"properties":{"status":{"const":"accepted"}}},"then":{"properties":{"evidence":{"$ref":"#/$defs/evidence"}}}}
+  ],
+  "$defs": {
+    "digest": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "path_digest": {"type":"object","additionalProperties":false,"required":["path","sha256"],"properties":{"path":{"type":"string","pattern":"^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},"sha256":{"$ref":"#/$defs/digest"}}},
+    "region": {"type":"object","additionalProperties":false,"required":["id","role","word_ids"],"properties":{"id":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9._-]*$"},"role":{"enum":["chapter-label","heading","prose","citation","notice","signature","running-matter"]},"word_ids":{"type":"array","minItems":1,"items":{"type":"string","pattern":"^word-[0-9]{3}$"}}}},
+    "decision": {"type":"object","additionalProperties":false,"required":["regions","reading_order","excluded_word_ids","finding_dispositions","region_dispositions","acceptance"],"properties":{"regions":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/region"}},"reading_order":{"type":"array","items":{"type":"string","pattern":"^r-[A-Za-z0-9._-]+$"}},"excluded_word_ids":{"type":"array","items":{"type":"string","pattern":"^word-[0-9]{3}$"}},"finding_dispositions":{"type":"object","additionalProperties":{"enum":["accepted","not-applicable","needs-follow-up"]}},"region_dispositions":{"type":"object","additionalProperties":{"enum":["accept","reject","needs-fix"]}},"acceptance":{"type":"object","additionalProperties":false,"required":["layout","reading_order","semantics","object_extraction"],"properties":{"layout":{"const":true},"reading_order":{"const":true},"semantics":{"const":true},"object_extraction":{"const":true}}}}},
+    "evidence": {"type":"object","additionalProperties":false,"required":["tracked_inventory_sha256","proposal","review_project","annotations","decision"],"properties":{"tracked_inventory_sha256":{"$ref":"#/$defs/digest"},"proposal":{"type":"object","additionalProperties":false,"required":["proposal_sha256","plan_sha256","raw_inventory_sha256","source_snapshot_sha256","render_sha256","poppler_raw_sha256"],"properties":{"proposal_sha256":{"$ref":"#/$defs/digest"},"plan_sha256":{"$ref":"#/$defs/digest"},"raw_inventory_sha256":{"$ref":"#/$defs/digest"},"source_snapshot_sha256":{"$ref":"#/$defs/digest"},"render_sha256":{"$ref":"#/$defs/digest"},"poppler_raw_sha256":{"$ref":"#/$defs/digest"}}},"review_project":{"$ref":"#/$defs/path_digest"},"annotations":{"$ref":"#/$defs/path_digest"},"decision":{"$ref":"#/$defs/decision"}}}
+  }
+}

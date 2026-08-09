@@ -36,6 +36,18 @@ function regionAnnotation(regionId = region()?.id) {
   return (pageAnnotation().regions[regionId] ??= {});
 }
 
+function nativeDefaultDecision(currentPage) {
+  const authority = currentPage.native_pdf_authority ?? {};
+  return {
+    regions: (currentPage.regions ?? []).map(({ id, role, word_ids }) => ({ id, role, word_ids })),
+    reading_order: authority.default_reading_order ?? [],
+    excluded_word_ids: authority.default_excluded_word_ids ?? [],
+    finding_dispositions: Object.fromEntries((authority.findings ?? []).map((item) => [item.id, "needs-follow-up"])),
+    region_dispositions: Object.fromEntries((currentPage.regions ?? []).map((item) => [item.id, "needs-fix"])),
+    acceptance: { layout: false, reading_order: false, semantics: false, object_extraction: false },
+  };
+}
+
 function escapeHtml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -59,10 +71,12 @@ function rectStyle(rect) {
   return `left:${x * 100}%;top:${y * 100}%;width:${width * 100}%;height:${height * 100}%`;
 }
 
-function media(viewAssetId, rect, label) {
+function media(viewAssetId, rect, label, showOverlay = false) {
   if (!viewAssetId) return `<div class="media-empty">No ${escapeHtml(label)} asset declared for this page.</div>`;
+  const overlay = showOverlay && page().overlay_asset_id ? `<img class="native-overlay" src="${assetUrl(page().overlay_asset_id)}" alt="Poppler word identifiers" />` : "";
   return `<div class="media-stage" aria-label="${escapeHtml(label)}">
     <img src="${assetUrl(viewAssetId)}" alt="${escapeHtml(label)} for ${escapeHtml(page().label ?? page().id)}" />
+    ${overlay}
     <button class="region-overlay" style="${rectStyle(rect)}" title="Selected region" aria-label="Selected region"></button>
   </div>`;
 }
@@ -86,9 +100,10 @@ function render() {
   const currentPage = page();
   const selected = region();
   const currentAnnotation = pageAnnotation(currentPage.id);
+  const nativeMode = state.project.review_mode === "native-pdf-authority";
   const selectedAnnotation = selected ? regionAnnotation(selected.id) : null;
   const instructions = state.project.review_instructions ?? {};
-  const scope = selected ? "region" : "page";
+  const scope = nativeMode ? "page" : (selected ? "region" : "page");
   const reviewInstruction = instructions[scope] ?? (selected
     ? "Accept confirms this region's authoritative source text, scan evidence, and generated layout agree."
     : "Accept confirms this displayed page is correctly mapped to its source and generated views.");
@@ -111,12 +126,12 @@ function render() {
         <div class="toolbar"><button data-action="previous" ${state.pageIndex === 0 ? "disabled" : ""}>← Previous</button><p><strong>${escapeHtml(currentPage.label ?? currentPage.id)}</strong><span> ${state.pageIndex + 1} / ${pages.length}</span></p><button data-action="next" ${state.pageIndex === pages.length - 1 ? "disabled" : ""}>Next →</button></div>
         <div class="comparison-grid">
           <section class="view-panel"><h2>Reference scan</h2>${media(currentPage.reference_asset_id, selected?.reference_box, "Reference scan")}</section>
-          <section class="view-panel"><h2>Generated replica</h2>${media(currentPage.generated_asset_id, selected?.generated_box ?? selected?.reference_box, "Generated replica")}</section>
+          <section class="view-panel"><h2>${nativeMode ? "Poppler word evidence" : "Generated replica"}</h2>${media(currentPage.generated_asset_id, selected?.generated_box ?? selected?.reference_box, nativeMode ? "Poppler word evidence" : "Generated replica", nativeMode)}</section>
         </div>
         <section class="review-card" aria-labelledby="decision-title">
-          <div class="decision-title"><div><p class="eyebrow">${selected ? "REGION REVIEW" : "PAGE REVIEW"}</p><h2 id="decision-title">${escapeHtml(selected?.label ?? currentPage.label ?? currentPage.id)}</h2></div><label>Disposition <select id="disposition">${dispositionOptions(selectedAnnotation?.disposition ?? currentAnnotation.disposition ?? "", scope)}</select></label></div>
+          <div class="decision-title"><div><p class="eyebrow">${nativeMode ? "NATIVE-PDF PAGE REVIEW" : (selected ? "REGION REVIEW" : "PAGE REVIEW")}</p><h2 id="decision-title">${escapeHtml(nativeMode ? (currentPage.label ?? currentPage.id) : (selected?.label ?? currentPage.label ?? currentPage.id))}</h2></div><label>Disposition <select id="disposition">${dispositionOptions(nativeMode ? (currentAnnotation.disposition ?? "") : (selectedAnnotation?.disposition ?? currentAnnotation.disposition ?? ""), scope)}</select></label></div>
           <p class="review-instruction">${escapeHtml(reviewInstruction)}</p>
-          ${selected ? `<div class="text-grid">
+          ${nativeMode ? nativeControls(currentPage, currentAnnotation.native_decision ?? nativeDefaultDecision(currentPage)) : selected ? `<div class="text-grid">
             <label>Recovered source<textarea readonly>${escapeHtml(selectedText("source"))}</textarea></label>
             <label>OCR evidence<textarea readonly>${escapeHtml(selectedText("ocr"))}</textarea></label>
             <label class="canonical">Corrected canonical text<textarea id="canonical-text" placeholder="Leave unchanged when the canonical text is correct">${escapeHtml(selectedAnnotation?.canonical_text ?? selected.canonical_text ?? "")}</textarea></label>
@@ -132,10 +147,26 @@ function render() {
 
 function editAnnotation() {
   const selected = region();
-  const target = selected ? regionAnnotation(selected.id) : pageAnnotation();
+  const nativeMode = state.project?.review_mode === "native-pdf-authority";
+  const target = nativeMode ? pageAnnotation() : (selected ? regionAnnotation(selected.id) : pageAnnotation());
   target.disposition = document.querySelector("#disposition").value || undefined;
   target.notes = document.querySelector("#notes").value || undefined;
+  if (nativeMode) {
+    const current = target.native_decision ?? nativeDefaultDecision(page());
+    current.region_dispositions = Object.fromEntries((page().regions ?? []).map((item) => [item.id, document.querySelector(`[data-native-region='${item.id}']`)?.value ?? "needs-fix"]));
+    current.finding_dispositions = Object.fromEntries((page().native_pdf_authority?.findings ?? []).map((item) => [item.id, document.querySelector(`[data-native-finding='${item.id}']`)?.value ?? "needs-follow-up"]));
+    current.acceptance = Object.fromEntries(["layout", "reading_order", "semantics", "object_extraction"].map((name) => [name, Boolean(document.querySelector(`[data-native-gate='${name}']`)?.checked)]));
+    target.native_decision = current;
+    return;
+  }
   if (selected) target.canonical_text = document.querySelector("#canonical-text").value || undefined;
+}
+
+function nativeControls(currentPage, decision) {
+  const region = (currentPage.regions ?? []).map((item) => `<label>${escapeHtml(item.label ?? item.role)} (${escapeHtml(item.word_ids.join(", "))})<small>${escapeHtml((item.word_text ?? []).join(" "))}</small><select data-native-region="${escapeHtml(item.id)}">${dispositionOptions(decision.region_dispositions?.[item.id] ?? "needs-fix", "region")}</select></label>`).join("");
+  const findings = (currentPage.native_pdf_authority?.findings ?? []).map((item) => `<label>${escapeHtml(item.id === "pypdf-ligature-specification" ? "Poppler specification vs pypdf speciﬁcation (U+FB01); accept means acknowledge and retain this witness disagreement, never normalize text." : "Raw Poppler and pypdf sequence disagreement; accept means acknowledge and retain it as evidence.")}<select data-native-finding="${escapeHtml(item.id)}">${["needs-follow-up", "accepted"].map((value) => `<option value="${value}"${decision.finding_dispositions?.[item.id] === value ? " selected" : ""}>${value}</option>`).join("")}</select></label>`).join("");
+  const gates = ["layout", "reading_order", "semantics", "object_extraction"].map((name) => `<label><input type="checkbox" data-native-gate="${name}"${decision.acceptance?.[name] ? " checked" : ""}/> I separately accept ${escapeHtml(name.replaceAll("_", " "))}</label>`).join("");
+  return `<div class="native-controls"><p>Blue numbered boxes are exact Poppler words. Grouping/order is fixed to this vision-first prefill; mark a region <em>needs fix</em> and explain why instead of entering text or editing IDs.</p><button data-action="accept-native-prefill">Accept all prefilled regions and four gates</button><h3>Regions</h3>${region}<h3>Mechanical findings</h3>${findings}<h3>Separate gates</h3>${gates}</div>`;
 }
 
 function selectPage(index) {
@@ -168,6 +199,16 @@ function acceptUndecidedRegions() {
   render();
 }
 
+function acceptNativePrefill() {
+  const annotation = pageAnnotation();
+  const decision = annotation.native_decision ?? nativeDefaultDecision(page());
+  for (const item of page().regions ?? []) decision.region_dispositions[item.id] = "accept";
+  decision.acceptance = { layout: true, reading_order: true, semantics: true, object_extraction: true };
+  annotation.native_decision = decision;
+  state.message = { kind: "success", text: "Prefilled regions and four gates are accepted. Review each finding separately, then save." };
+  render();
+}
+
 function bindEvents() {
   root.querySelectorAll("[data-page]").forEach((element) => element.addEventListener("click", () => selectPage(Number(element.dataset.page))));
   root.querySelectorAll("[data-region]").forEach((element) => element.addEventListener("click", () => selectRegion(Number(element.dataset.region))));
@@ -175,11 +216,12 @@ function bindEvents() {
   root.querySelector("[data-action='next']")?.addEventListener("click", () => selectPage(state.pageIndex + 1));
   root.querySelector("[data-action='save']")?.addEventListener("click", save);
   root.querySelector("[data-action='accept-undecided']")?.addEventListener("click", acceptUndecidedRegions);
+  root.querySelector("[data-action='accept-native-prefill']")?.addEventListener("click", acceptNativePrefill);
   root.querySelector("#reviewer").addEventListener("input", (event) => { state.reviewer = event.target.value; });
 }
 
 async function save() {
-  editAnnotation();
+  try { editAnnotation(); } catch (error) { flash("error", error.message); return; }
   if (!state.reviewer.trim()) {
     flash("error", "Enter your reviewer name before saving.");
     document.querySelector("#reviewer")?.focus();

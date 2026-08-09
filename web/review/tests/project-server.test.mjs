@@ -85,3 +85,29 @@ test("only reviewable media types may be declared", async (t) => {
   t.after(() => fs.rm(value.directory, { recursive: true, force: true }));
   assert.throws(() => loadReviewProject({ env: value.env }), /not an allowed review media type/);
 });
+
+test("native-PDF review rejects free text and only permits a guarded page decision", async (t) => {
+  const nativeManifest = {
+    ...manifest(), review_mode: "native-pdf-authority",
+    pages: [{ id: "page-1", reference_asset_id: "scan", regions: [{ id: "r-1", role: "prose", word_ids: ["word-000"] }], native_pdf_authority: { default_reading_order: ["r-1"], default_excluded_word_ids: [], findings: [{ id: "finding-1" }] }}],
+  };
+  const value = await fixture(nativeManifest);
+  t.after(() => fs.rm(value.directory, { recursive: true, force: true }));
+  const project = loadReviewProject({ env: value.env });
+  const payload = {
+    project_sha256: project.projectSha256, base_annotations_sha256: null, reviewer: "reviewer",
+    annotations: { pages: { "page-1": { regions: { "r-1": { canonical_text: "forbidden" } } } } },
+  };
+  assert.throws(() => validateAnnotationPayload(payload, project, null), /not allowed in native-PDF review/);
+});
+
+test("native-PDF review rejects nested free text and accepts only exact fixed choices", async (t) => {
+  const nativeManifest = { ...manifest(), review_mode: "native-pdf-authority", pages: [{ id: "page-1", reference_asset_id: "scan", regions: [{ id: "r-1", role: "prose", word_ids: ["word-000"] }], native_pdf_authority: { default_reading_order: ["r-1"], default_excluded_word_ids: [], findings: [{ id: "finding-1" }] }}] };
+  const value = await fixture(nativeManifest); t.after(() => fs.rm(value.directory, { recursive: true, force: true }));
+  const project = loadReviewProject({ env: value.env });
+  const decision = { regions: [{ id: "r-1", role: "prose", word_ids: ["word-000"] }], reading_order: ["r-1"], excluded_word_ids: [], finding_dispositions: { "finding-1": "accepted" }, region_dispositions: { "r-1": "accept" }, acceptance: { layout: true, reading_order: true, semantics: true, object_extraction: true } };
+  const payload = { project_sha256: project.projectSha256, base_annotations_sha256: null, reviewer: "r", annotations: { pages: { "page-1": { native_decision: structuredClone(decision) } } } };
+  assert.doesNotThrow(() => validateAnnotationPayload(payload, project, null));
+  payload.annotations.pages["page-1"].native_decision.regions[0].text = "forbidden";
+  assert.throws(() => validateAnnotationPayload(payload, project, null), /unallowed field/);
+});

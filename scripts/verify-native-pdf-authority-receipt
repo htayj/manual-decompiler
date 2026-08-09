@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Verify a tracked K Machine native-PDF authority receipt."""
+import argparse
+from pathlib import Path
+from lispmdoc.benchmark.native_pdf_authority import NativePdfAuthorityError, verify_receipt
+p=argparse.ArgumentParser(description=__doc__); p.add_argument("proposal", type=Path); p.add_argument("--receipt", default="config/benchmarks/native-pdf-k-machine-p3-receipt.json"); p.add_argument("--root", type=Path, default=Path.cwd()); a=p.parse_args()
+try: print("accepted" if verify_receipt(a.root,a.proposal,a.receipt) else "pending")
+except NativePdfAuthorityError as e: p.error(str(e))

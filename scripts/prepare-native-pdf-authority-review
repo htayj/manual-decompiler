@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""Prepare a new local Vite review project for K Machine source page 3."""
+import argparse
+from pathlib import Path
+from lispmdoc.benchmark.native_pdf_authority import NativePdfAuthorityError, build_review_project
+
+p=argparse.ArgumentParser(description=__doc__); p.add_argument("proposal", type=Path); p.add_argument("output", type=Path); p.add_argument("--root", type=Path, default=Path.cwd()); a=p.parse_args()
+try: print(build_review_project(a.root, a.proposal, a.output))
+except NativePdfAuthorityError as e: p.error(str(e))

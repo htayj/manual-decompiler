@@ -123,7 +123,7 @@ function pageIds(manifest, assetIds) {
     const id = string(page.id, `pages[${index}].id`);
     if (ids.has(id)) throw new ReviewProjectError(`duplicate page id: ${id}`);
     ids.add(id);
-    for (const viewKey of ["reference_asset_id", "generated_asset_id"]) {
+    for (const viewKey of ["reference_asset_id", "generated_asset_id", "overlay_asset_id"]) {
       if (page[viewKey] !== undefined && !assetIds.has(page[viewKey])) {
         throw new ReviewProjectError(`pages[${index}].${viewKey} names an undeclared asset`);
       }
@@ -204,6 +204,35 @@ function reviewField(value, label) {
   }
 }
 
+function nativeDecision(value, page, label) {
+  const decision = object(value, `${label}.native_decision`);
+  const expectedKeys = new Set(["regions", "reading_order", "excluded_word_ids", "finding_dispositions", "region_dispositions", "acceptance"]);
+  for (const key of Object.keys(decision)) if (!expectedKeys.has(key)) throw annotationError(`${label}.native_decision.${key} is not allowed`);
+  for (const key of expectedKeys) if (!(key in decision)) throw annotationError(`${label}.native_decision.${key} is required`);
+  const declared = page.native_pdf_authority;
+  if (!declared || !Array.isArray(page.regions) || !Array.isArray(declared.default_reading_order) || !Array.isArray(declared.default_excluded_word_ids) || !Array.isArray(declared.findings)) throw annotationError("native-PDF manifest lacks a guarded decision contract");
+  if (!Array.isArray(decision.regions) || decision.regions.length !== page.regions.length) throw annotationError(`${label}.native_decision.regions must exactly match the fixed manifest regions`);
+  for (let index = 0; index < page.regions.length; index += 1) {
+    const candidate = object(decision.regions[index], `${label}.native_decision.regions[${index}]`);
+    for (const key of Object.keys(candidate)) if (!["id", "role", "word_ids"].includes(key)) throw annotationError("native region has an unallowed field");
+    const fixed = page.regions[index];
+    if (candidate.id !== fixed.id || candidate.role !== fixed.role || !Array.isArray(candidate.word_ids) || JSON.stringify(candidate.word_ids) !== JSON.stringify(fixed.word_ids)) throw annotationError("native region must exactly retain fixed Poppler IDs and role");
+  }
+  if (!Array.isArray(decision.reading_order) || JSON.stringify(decision.reading_order) !== JSON.stringify(declared.default_reading_order)) throw annotationError("native reading_order must retain the fixed prefill");
+  if (!Array.isArray(decision.excluded_word_ids) || JSON.stringify(decision.excluded_word_ids) !== JSON.stringify(declared.default_excluded_word_ids)) throw annotationError("native exclusions must retain the fixed prefill");
+  const findings = new Set(declared.findings.map((item) => item.id));
+  const regionIds = new Set(page.regions.map((item) => item.id));
+  for (const [kind, expected, allowed] of [["finding_dispositions", findings, new Set(["accepted", "not-applicable", "needs-follow-up"])], ["region_dispositions", regionIds, new Set(["accept", "reject", "needs-fix"])]]) {
+    const map = object(decision[kind], `${label}.native_decision.${kind}`);
+    if (Object.keys(map).length !== expected.size) throw annotationError(`native ${kind} must be exhaustive`);
+    for (const [id, disposition] of Object.entries(map)) if (!expected.has(id) || !allowed.has(disposition)) throw annotationError(`native ${kind} has an unknown ID or disposition`);
+  }
+  const acceptance = object(decision.acceptance, `${label}.native_decision.acceptance`);
+  const gates = ["layout", "reading_order", "semantics", "object_extraction"];
+  if (Object.keys(acceptance).length !== gates.length || gates.some((gate) => typeof acceptance[gate] !== "boolean")) throw annotationError("native acceptance must contain exactly four booleans");
+  return decision;
+}
+
 /** Validate that an annotation can only address manifest-declared pages/regions. */
 export function validateAnnotationPayload(value, project, expectedAnnotationsSha256) {
   const payload = object(value, "annotation payload");
@@ -221,6 +250,15 @@ export function validateAnnotationPayload(value, project, expectedAnnotationsSha
   for (const [pageId, pageValue] of Object.entries(pages)) {
     if (!project.pageIds.has(pageId)) throw annotationError(`unknown page: ${pageId}`);
     const page = object(pageValue, `annotations.pages.${pageId}`);
+    const native = project.manifest.review_mode === "native-pdf-authority";
+    if (native) {
+      const allowed = new Set(["disposition", "notes", "native_decision"]);
+      for (const key of Object.keys(page)) if (!allowed.has(key)) throw annotationError(`pages.${pageId}.${key} is not allowed in native-PDF review`);
+      if (page.native_decision !== undefined) {
+        nativeDecision(page.native_decision, project.manifest.pages.find((item) => item.id === pageId), `pages.${pageId}`);
+      }
+      if (page.regions !== undefined) throw annotationError("native-PDF review uses one guarded page decision, not region text annotations");
+    }
     if (page.disposition !== undefined && !DISPOSITIONS.has(page.disposition)) {
       throw annotationError(`pages.${pageId}.disposition is invalid`);
     }
