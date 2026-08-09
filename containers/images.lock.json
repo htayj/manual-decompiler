@@ -13,6 +13,12 @@
       "reference": "ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddle@sha256:a9f944f4a8b075b85928dd51880269bdc63b59aa1d7c9360283c658ac6eed2a4",
       "source_tag": "3.0.0-gpu-cuda12.6-cudnn9.5-trt10.5"
     },
+    "paddle-runtime": {
+      "image": "localhost/lispmdoc-paddleocr",
+      "image_id": "8e4a92357c29996a95a4876f55a6fb08c8a902e9cc46f53afd4a37dd977efb52",
+      "platform": "linux/amd64",
+      "reference": "localhost/lispmdoc-paddleocr:3.7.0-cu126"
+    },
     "surya-vllm": {
       "image": "docker.io/vllm/vllm-openai",
       "platform": "linux/amd64",

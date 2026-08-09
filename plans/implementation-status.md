@@ -328,11 +328,43 @@ Surya layout, and the retained output lacks engine/model/version identity.
 Two independent evaluations are byte-identical at SHA-256
 `07f89a555715e3ae10f81519cbf571bbf9a5f7a2ef1bb32ba789344e51d981a6`.
 
+A fail-closed recovered-source importer now re-extracts every cited Bolio span
+instead of trusting replica-manifest text digests. This exposes 41 derivation
+disagreements across 14 pages: only 6 pages currently reproduce every stored
+region digest and qualify as authoritative; the other 14 are explicitly
+provisional. The importer still emits a deterministic 20-page Wave-1 queue,
+with source-semantic composition tags, but cannot silently promote those
+provisional pages.
+
+A fail-closed runner now supports page subsets and no-overwrite Surya/Paddle
+run records. The hardened `ocr-rerun-r5` completed all 20 pages with Surya
+0.22.1 and PaddleOCR 3.7.0/Paddle 3.0.0 on `gpu:0`. It verifies the actual
+source PDF, copied rendered inputs, launchers, model locks, the exact Podman
+binary, the locked Paddle runtime image ID, versions, GPU visibility, and raw
+output presence. Paddle can write only its dedicated raw directory; input and
+sealed evidence digests are checked between commands. The run retained one
+Surya result and 20 Paddle results, and its sorted raw-output inventory SHA-256
+is `0130bd4a699c5573addad90abb60c0fedd426282eb6d42f4b5dc43d063e9be5f`.
+Surya verification binds its revision, primary weight, and aggregate snapshot
+size but is explicitly not a full per-file auxiliary snapshot manifest.
+`ocr-rerun-r4` predates these controls and remains only provisional execution
+evidence; neither ordinary ignored run directory is an immutable archive.
+
+The tracked r5 receipt externally anchors the ignored run roots. The
+fail-closed evaluator rehashes those roots and raw files, rejects symlinked or
+unreceipted substitutions, and binds the exact reviewed r33 geometry manifest.
+On the 6 authoritative pages, Surya/Paddle respectively measure 1.547%/1.745%
+semantic CER, 0.893%/4.299% semantic WER, and 77.78%/82.96% exact code-token
+accuracy. Both engines assigned text to every reviewed content region and each
+left 30 raw lines unassigned. That assignment rate is explicitly not a layout
+quality score. The 14 provisional pages remain exploratory, and the evaluator
+correctly leaves engine selection at `not-selected`.
+
 ## Current automated verification
 
 ```text
 uv run pytest -q
-249 passed
+275 passed
 
 uv run ruff check .
 All checks passed
@@ -370,7 +402,9 @@ tracked working tree clean after the recorded commit
   clean-environment reproducibility checks.
 - Replacement-ready conformance.
 
-The next implementation milestone is a representative English benchmark with
-retained engine/model identities and geometry-bearing outputs from at least two
-OCR engines. A corpus-wide OCR run should not happen before that benchmark can
-support evidence-backed engine selection.
+The next implementation milestone is expanding authoritative ground truth
+beyond six pages while resolving the 41 recovered-source derivation
+disagreements on the other 14 pages. Expansion beyond this slice still needs a
+representative English benchmark and human mapping/layout approval. A
+corpus-wide OCR run should not happen before that benchmark can support
+evidence-backed engine selection.

@@ -71,10 +71,10 @@ case "$command_name" in
           ;;
       esac
     done
-    exec "$PODMAN_BIN" run "${translated[@]}"
+    exec env -u LD_LIBRARY_PATH "$PODMAN_BIN" run "${translated[@]}"
     ;;
   logs|stop|rm|ps|inspect|images|pull|version|info)
-    exec "$PODMAN_BIN" "$command_name" "$@"
+    exec env -u LD_LIBRARY_PATH "$PODMAN_BIN" "$command_name" "$@"
     ;;
   *)
     echo "lispmdoc podman shim: unsupported Docker command: $command_name" >&2

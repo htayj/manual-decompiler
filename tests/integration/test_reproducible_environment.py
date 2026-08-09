@@ -15,10 +15,14 @@ def test_container_lock_uses_platform_digests() -> None:
     lock = json.loads((ROOT / "containers" / "images.lock.json").read_text())
 
     assert lock["format"] == "lispmdoc-container-lock-1"
-    assert {"cuda-smoke", "paddle-base", "surya-vllm"} == set(lock["images"])
-    for image in lock["images"].values():
+    assert {"cuda-smoke", "paddle-base", "paddle-runtime", "surya-vllm"} == set(lock["images"])
+    for name, image in lock["images"].items():
         reference = image["reference"]
         assert image["platform"] == "linux/amd64"
+        if name == "paddle-runtime":
+            assert reference == "localhost/lispmdoc-paddleocr:3.7.0-cu126"
+            assert SHA256.fullmatch(image["image_id"])
+            continue
         assert "@sha256:" in reference
         assert SHA256.fullmatch(reference.rsplit("@sha256:", 1)[1])
         assert ":" not in reference.split("@", 1)[0].rsplit("/", 1)[1]
@@ -83,3 +87,12 @@ def test_environment_launchers_are_executable_and_parse_as_bash() -> None:
     ):
         assert os.access(script, os.X_OK)
         ast.parse(script.read_text())
+
+
+def test_paddle_launcher_mounts_only_the_pinned_raw_output_directory() -> None:
+    launcher = (ROOT / "tools" / "paddleocr" / "run").read_text()
+
+    assert "LISPMDOC_PADDLE_RAW_OUTPUT_ROOT:?" in launcher
+    assert '--volume "$RAW_OUTPUT_ROOT:$RAW_OUTPUT_CONTAINER:rw"' in launcher
+    assert '--volume "$REPO_ROOT/work:/work/work:rw"' not in launcher
+    assert '"$IMAGE_ID" "$@"' in launcher

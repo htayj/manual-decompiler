@@ -1,0 +1,745 @@
+#!/usr/bin/env python3
+"""Run a provenance-bound OCR comparison over rendered Chinual pages.
+
+This deliberately writes *engine raw output*, rather than an interchange
+format.  Importers can subsequently decide how (or whether) to interpret it.
+The output directory is a new run record: this script never overwrites an
+existing one.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+import platform
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
+
+FORMAT = "lispmdoc-provenance-ocr-run-1"
+DEFAULT_MANIFEST = (
+    "work/chinual-slice/123ceb361b0c84864425fc7eee319afc9891a7a68e417f93386f8172334a6e85/"
+    "ad853090cdf93cbe107ef92525c9f543e20c5e50d6f48b239f10f244ee4a3cc9/"
+    "render-manifest.json"
+)
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"expected JSON object in {path}")
+    return value
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
+
+
+def relative_to(path: Path, root: Path, description: str) -> Path:
+    try:
+        return path.resolve().relative_to(root)
+    except ValueError as error:
+        raise ValueError(f"{description} must be inside repository root: {path}") from error
+
+
+def parse_pages(value: str) -> list[int]:
+    pages: set[int] = set()
+    for item in value.split(","):
+        part = item.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start_text, end_text = part.split("-", 1)
+            start, end = int(start_text), int(end_text)
+            if start > end:
+                raise ValueError(f"invalid descending page range: {part}")
+            pages.update(range(start, end + 1))
+        else:
+            pages.add(int(part))
+    if not pages:
+        raise ValueError("--pages selected no pages")
+    return sorted(pages)
+
+
+def command_record(
+    command: list[str], started: float, result: subprocess.CompletedProcess[str]
+) -> dict[str, Any]:
+    return {
+        "argv": command,
+        "started_at": dt.datetime.fromtimestamp(started, dt.UTC).isoformat().replace("+00:00", "Z"),
+        "finished_at": utc_now(),
+        "elapsed_seconds": round(time.monotonic() - started, 6),
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+
+
+def run_command(command: list[str], *, env: dict[str, str] | None = None) -> dict[str, Any]:
+    started = time.time()
+    monotonic_started = time.monotonic()
+    result = subprocess.run(command, text=True, capture_output=True, check=False, env=env)
+    record = command_record(command, started, result)
+    record["elapsed_seconds"] = round(time.monotonic() - monotonic_started, 6)
+    return record
+
+
+def git_identity(repo_root: Path) -> dict[str, Any]:
+    record = run_command(["git", "-C", str(repo_root), "rev-parse", "HEAD"])
+    commit = record["stdout"].strip() if record["returncode"] == 0 else None
+    status = run_command(["git", "-C", str(repo_root), "status", "--porcelain=v1"])
+    return {
+        "commit": commit,
+        "dirty_paths": status["stdout"].splitlines(),
+        "commands": [record, status],
+    }
+
+
+def file_identity(path: Path, repo_root: Path) -> dict[str, Any]:
+    resolved = path.resolve()
+    try:
+        recorded_path = str(resolved.relative_to(repo_root))
+    except ValueError:
+        # --repo-root exists for isolated dry-run tests.  A copied runner is
+        # not required merely to describe that test plan, but its absolute
+        # path makes the identity boundary explicit.
+        recorded_path = str(resolved)
+    return {
+        "path": recorded_path,
+        "sha256": sha256(resolved),
+        "byte_size": resolved.stat().st_size,
+    }
+
+
+def require_regular_file(path: Path, description: str) -> None:
+    metadata = path.lstat()
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise ValueError(f"{description} must be a regular non-symlink file: {path}")
+
+
+def verify_source_pdf(
+    manifest: dict[str, Any], source_pdf: Path, repo_root: Path
+) -> dict[str, Any]:
+    expected = manifest.get("source")
+    if not isinstance(expected, dict):
+        raise ValueError("render manifest has no source PDF identity")
+    require_regular_file(source_pdf, "source PDF")
+    actual = file_identity(source_pdf, repo_root)
+    if actual["sha256"] != expected.get("sha256"):
+        raise ValueError("source PDF digest does not match render manifest")
+    if actual["byte_size"] != expected.get("byte_size"):
+        raise ValueError("source PDF size does not match render manifest")
+    return {"expected": expected, "actual": actual}
+
+
+def selected_pages(
+    manifest_path: Path, wanted: Iterable[int], repo_root: Path
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    manifest = read_json(manifest_path)
+    manifest_pages = {entry["page_number"]: entry for entry in manifest.get("pages", [])}
+    selected: list[dict[str, Any]] = []
+    for page_number in wanted:
+        entry = manifest_pages.get(page_number)
+        if not isinstance(entry, dict):
+            raise ValueError(f"page {page_number} is absent from render manifest")
+        image = entry.get("image")
+        if not isinstance(image, dict) or not isinstance(image.get("path"), str):
+            raise ValueError(f"page {page_number} has no usable rendered image")
+        image_path = manifest_path.parent / image["path"]
+        require_regular_file(image_path, f"rendered image for page {page_number}")
+        image_path = image_path.resolve()
+        relative_to(image_path, repo_root, f"rendered image for page {page_number}")
+        actual_sha256 = sha256(image_path)
+        if actual_sha256 != image.get("sha256"):
+            raise ValueError(f"rendered image digest mismatch for page {page_number}")
+        selected.append(
+            {
+                "page_number": page_number,
+                "path": str(relative_to(image_path, repo_root, "rendered image")),
+                "sha256": actual_sha256,
+                "byte_size": image_path.stat().st_size,
+                "width_px": image.get("width_px"),
+                "height_px": image.get("height_px"),
+            }
+        )
+    return manifest, selected
+
+
+def model_verification(repo_root: Path, model_root: Path, engine: str) -> dict[str, Any]:
+    snapshot_total_bytes: int | None = None
+    if engine == "surya":
+        lock_path = repo_root / "config/models/surya-ocr-2.lock.json"
+        lock = read_json(lock_path)
+        model = lock["model"]
+        weight = model["primary_weight"]
+        path = (
+            model_root
+            / "huggingface"
+            / f"models--{model['repository'].replace('/', '--')}"
+            / "snapshots"
+            / model["revision"]
+            / weight["path"]
+        )
+        expected_files = [(path, weight["sha256"], weight["size"])]
+    elif engine == "paddleocr":
+        lock_path = repo_root / "config/models/paddleocr-ppocrv5-en.lock.json"
+        lock = read_json(lock_path)
+        expected_files = []
+        for name, model in lock["models"].items():
+            for relative, expected_digest in model["files"].items():
+                expected_files.append(
+                    (
+                        model_root / "paddleocr" / "official_models" / name / relative,
+                        expected_digest,
+                        None,
+                    )
+                )
+    else:
+        raise ValueError(f"unknown engine: {engine}")
+
+    files: list[dict[str, Any]] = []
+    for path, expected_digest, expected_size in expected_files:
+        if not path.is_file():
+            raise ValueError(f"locked {engine} model file is missing: {path}")
+        actual_digest = sha256(path)
+        actual_size = path.stat().st_size
+        if actual_digest != expected_digest:
+            raise ValueError(f"locked {engine} model digest mismatch: {path}")
+        if expected_size is not None and actual_size != expected_size:
+            raise ValueError(f"locked {engine} model size mismatch: {path}")
+        files.append({"path": str(path), "sha256": actual_digest, "byte_size": actual_size})
+    if engine == "surya":
+        snapshot_root = path.parent
+        cache_root = (
+            model_root / "huggingface" / f"models--{model['repository'].replace('/', '--')}"
+        )
+        snapshot_total_bytes = 0
+        for snapshot_file in snapshot_root.rglob("*"):
+            if snapshot_file.is_dir():
+                continue
+            resolved = snapshot_file.resolve()
+            if not resolved.is_relative_to(cache_root.resolve()):
+                raise ValueError(f"Surya snapshot file escapes its model cache: {snapshot_file}")
+            require_regular_file(resolved, "Surya snapshot target")
+            snapshot_total_bytes += resolved.stat().st_size
+        if snapshot_total_bytes != model["expected_snapshot_bytes"]:
+            raise ValueError(
+                "locked Surya snapshot byte total mismatch: "
+                f"expected {model['expected_snapshot_bytes']}, got {snapshot_total_bytes}"
+            )
+    scope = (
+        "primary-weight-and-aggregate-size: the Surya lock fixes its snapshot revision, "
+        "model.safetensors, and total snapshot bytes, but not a full per-file manifest"
+        if engine == "surya"
+        else "full-file-manifest: every PaddleOCR lock-listed runtime model file was verified"
+    )
+    return {
+        "lock": file_identity(lock_path, repo_root),
+        "verification_scope": scope,
+        "verified_files": files,
+        "snapshot_total_bytes": snapshot_total_bytes,
+    }
+
+
+def resource_metadata() -> dict[str, Any]:
+    stat = os.statvfs(".")
+    return {
+        "host": platform.node(),
+        "platform": platform.platform(),
+        "python": sys.version,
+        "cpu_count": os.cpu_count(),
+        "memory_bytes": os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"),
+        "working_directory_free_bytes": stat.f_bavail * stat.f_frsize,
+    }
+
+
+def child_environment(
+    model_root: Path, podman_bin: Path, paddle_raw_output: Path
+) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "LISPMDOC_MODEL_ROOT": str(model_root),
+            "DOCKER_HF_CACHE_PATH": str(model_root / "huggingface"),
+            "LISPMDOC_PODMAN_BIN": str(podman_bin),
+            "LISPMDOC_PADDLE_RAW_OUTPUT_ROOT": str(paddle_raw_output),
+            "SURYA_INFERENCE_BACKEND": "vllm",
+            "VLLM_GPU_TYPE": "4090",
+        }
+    )
+    return environment
+
+
+def build_plan(args: argparse.Namespace) -> dict[str, Any]:
+    repo_root = args.repo_root.resolve()
+    manifest_path = args.render_manifest.resolve()
+    model_root = args.model_root.resolve()
+    output = args.output.resolve()
+    source_pdf = args.source_pdf.absolute()
+    podman_bin = args.podman_bin.resolve()
+    relative_to(manifest_path, repo_root, "render manifest")
+    relative_to(output, repo_root / "work", "output directory")
+    manifest, pages = selected_pages(manifest_path, parse_pages(args.pages), repo_root)
+    source_identity = verify_source_pdf(manifest, source_pdf, repo_root)
+    engines = ["surya", "paddleocr"] if args.engine == "both" else [args.engine]
+    runtime_environment = child_environment(model_root, podman_bin, output / "paddleocr/raw")
+    identities = {
+        "repository": git_identity(repo_root),
+        "runner": file_identity(Path(__file__).resolve(), repo_root),
+        "render_manifest": file_identity(manifest_path, repo_root),
+        "container_lock": file_identity(repo_root / "containers/images.lock.json", repo_root),
+        "surya_launcher": file_identity(repo_root / "tools/surya/run", repo_root),
+        "surya_project": [
+            file_identity(repo_root / "tools/surya/pyproject.toml", repo_root),
+            file_identity(repo_root / "tools/surya/uv.lock", repo_root),
+        ],
+        "paddle_launcher": file_identity(repo_root / "tools/paddleocr/run", repo_root),
+        "paddle_page_program": file_identity(repo_root / "tools/paddleocr/ocr_page.py", repo_root),
+        "paddle_container": [
+            file_identity(repo_root / "containers/paddleocr/Containerfile", repo_root),
+            file_identity(repo_root / "containers/paddleocr/requirements.lock", repo_root),
+        ],
+        "surya_container_shim": file_identity(repo_root / "tools/podman-shims/docker", repo_root),
+        "model_locks": [
+            file_identity(repo_root / "config/models/surya-ocr-2.lock.json", repo_root),
+            file_identity(repo_root / "config/models/paddleocr-ppocrv5-en.lock.json", repo_root),
+        ],
+    }
+    return {
+        "format": FORMAT,
+        "created_at": utc_now(),
+        "output": str(relative_to(output, repo_root, "output directory")),
+        "requested": {"engine": args.engine, "pages": [page["page_number"] for page in pages]},
+        "source_pdf": source_identity,
+        "render_manifest": identities["render_manifest"],
+        "inputs": pages,
+        "identities": identities,
+        "model_root": str(model_root),
+        "runtime_environment": {
+            name: runtime_environment[name]
+            for name in (
+                "LISPMDOC_MODEL_ROOT",
+                "DOCKER_HF_CACHE_PATH",
+                "LISPMDOC_PODMAN_BIN",
+                "LISPMDOC_PADDLE_RAW_OUTPUT_ROOT",
+                "SURYA_INFERENCE_BACKEND",
+                "VLLM_GPU_TYPE",
+            )
+        },
+        "podman_executable": file_identity(podman_bin, repo_root),
+        "resource_metadata": resource_metadata(),
+        "inference_commands": planned_commands(repo_root, output, pages, engines),
+    }
+
+
+def planned_commands(
+    repo_root: Path, output: Path, pages: list[dict[str, Any]], engines: list[str]
+) -> list[list[str]]:
+    commands: list[list[str]] = []
+    if "surya" in engines:
+        commands.append(
+            [
+                str(repo_root / "tools/surya/run"),
+                str(output / "inputs"),
+                "--output_dir",
+                str(output / "surya/raw"),
+            ]
+        )
+    if "paddleocr" in engines:
+        for page in pages:
+            snapshot = output / "inputs" / f"p{page['page_number']:06d}.png"
+            raw_path = output / "paddleocr/raw" / f"p{page['page_number']:06d}.json"
+            commands.append(
+                [
+                    str(repo_root / "tools/paddleocr/run"),
+                    "/work/tools/paddleocr/ocr_page.py",
+                    f"/work/{relative_to(snapshot, repo_root, 'Paddle input snapshot')}",
+                    f"/work/{relative_to(raw_path, repo_root, 'Paddle output')}",
+                ]
+            )
+    return commands
+
+
+def write_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    temporary.replace(path)
+
+
+def raw_output_inventory(output: Path) -> list[dict[str, Any]]:
+    files: list[Path] = []
+    for root in (output / "surya/raw", output / "paddleocr/raw"):
+        if not root.exists():
+            continue
+        if root.is_symlink() or not root.is_dir():
+            raise RuntimeError(f"raw output root is not a regular directory: {root}")
+        for path in root.rglob("*"):
+            metadata = path.lstat()
+            if stat.S_ISLNK(metadata.st_mode):
+                raise RuntimeError(f"raw output contains a symlink: {path}")
+            if stat.S_ISDIR(metadata.st_mode):
+                continue
+            if not stat.S_ISREG(metadata.st_mode):
+                raise RuntimeError(f"raw output contains a non-regular file: {path}")
+            if not path.resolve().is_relative_to(root.resolve()):
+                raise RuntimeError(f"raw output escapes its root: {path}")
+            files.append(path)
+    return [
+        {
+            "path": str(path.relative_to(output)),
+            "sha256": sha256(path),
+            "byte_size": path.stat().st_size,
+        }
+        for path in sorted(files, key=lambda candidate: str(candidate.relative_to(output)))
+    ]
+
+
+def validate_expected_raw_output(plan: dict[str, Any], output: Path) -> None:
+    raw_output_inventory(output)
+    selected_engines = plan["requested"]["engine"]
+    if selected_engines in {"surya", "both"}:
+        results = output / "surya/raw/inputs/results.json"
+        if not results.is_file() or results.stat().st_size == 0:
+            raise RuntimeError("Surya completed without its required raw results.json")
+    if selected_engines in {"paddleocr", "both"}:
+        missing = [
+            page["page_number"]
+            for page in plan["inputs"]
+            if not (output / "paddleocr/raw" / f"p{page['page_number']:06d}.json").is_file()
+        ]
+        if missing:
+            numbers = ", ".join(str(page_number) for page_number in missing)
+            raise RuntimeError(f"PaddleOCR completed without raw JSON for pages: {numbers}")
+
+
+def write_raw_inventory(output: Path) -> None:
+    write_json(
+        output / "provenance/raw-output-inventory.json",
+        {"format": FORMAT, "files": raw_output_inventory(output)},
+    )
+
+
+def verify_paddle_image_identity(record: dict[str, Any], expected_image_id: str) -> None:
+    if record["returncode"] != 0:
+        return
+    try:
+        inspected = json.loads(record["stdout"])
+        image_id = inspected[0].get("Id") if isinstance(inspected, list) and inspected else None
+    except json.JSONDecodeError:
+        image_id = None
+    if image_id != expected_image_id:
+        record["returncode"] = 1
+        record["stderr"] += "\nPaddle runtime image ID does not match lock"
+
+
+def snapshot_inputs(plan: dict[str, Any], repo_root: Path, output: Path) -> None:
+    for page in plan["inputs"]:
+        source = repo_root / page["path"]
+        require_regular_file(source, f"source render for page {page['page_number']}")
+        target = output / "inputs" / f"p{page['page_number']:06d}.png"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        target.chmod(0o444)
+    verify_input_snapshots(plan, output)
+
+
+def verify_input_snapshots(plan: dict[str, Any], output: Path) -> None:
+    input_root = output / "inputs"
+    if input_root.is_symlink() or not input_root.is_dir():
+        raise RuntimeError(f"input snapshot root is not a regular directory: {input_root}")
+    for page in plan["inputs"]:
+        snapshot = input_root / f"p{page['page_number']:06d}.png"
+        try:
+            require_regular_file(snapshot, f"input snapshot for page {page['page_number']}")
+        except ValueError as error:
+            raise RuntimeError(str(error)) from error
+        if snapshot.stat().st_size != page["byte_size"] or sha256(snapshot) != page["sha256"]:
+            raise RuntimeError(f"input snapshot digest mismatch for page {page['page_number']}")
+
+
+def preflight(
+    plan: dict[str, Any], args: argparse.Namespace, paddle_raw_output: Path
+) -> dict[str, Any]:
+    repo_root = args.repo_root.resolve()
+    container_lock = read_json(repo_root / "containers/images.lock.json")
+    podman = args.podman_bin.resolve()
+    environment = child_environment(args.model_root.resolve(), podman, paddle_raw_output)
+    checks: dict[str, Any] = {
+        "resources": resource_metadata(),
+        "podman": run_command([str(podman), "--version"], env=environment),
+        "nvidia_smi": run_command(
+            ["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"],
+            env=environment,
+        )
+        if shutil.which("nvidia-smi")
+        else {"available": False},
+        "models": {},
+        "container_images": {},
+        "engine_versions": {},
+    }
+    engines = ["surya", "paddleocr"] if args.engine == "both" else [args.engine]
+    for engine in engines:
+        checks["models"][engine] = model_verification(repo_root, args.model_root.resolve(), engine)
+    checks["engine_versions"] = {
+        "surya": run_command(
+            [
+                str(repo_root / "tools/surya/run"),
+                "python",
+                "-c",
+                "from importlib.metadata import version; print(version('surya-ocr'))",
+            ],
+            env=environment,
+        )
+        if "surya" in engines
+        else None,
+        "paddleocr": run_command(
+            [
+                str(repo_root / "tools/paddleocr/run"),
+                "-c",
+                "from importlib.metadata import version; import paddle; "
+                "print(version('paddleocr'), paddle.__version__, paddle.device.get_device())",
+            ],
+            env=environment,
+        )
+        if "paddleocr" in engines
+        else None,
+    }
+    image_names = {"surya": "surya-vllm", "paddleocr": "paddle-runtime"}
+    for engine in engines:
+        image = container_lock["images"][image_names[engine]]
+        reference = image["reference"]
+        record = run_command([str(podman), "image", "inspect", reference], env=environment)
+        if engine == "paddleocr":
+            verify_paddle_image_identity(record, image["image_id"])
+        checks["container_images"][engine] = record
+    return {
+        "format": FORMAT,
+        "preflight_at": utc_now(),
+        "plan": plan,
+        "child_environment": {
+            name: environment[name]
+            for name in (
+                "LISPMDOC_MODEL_ROOT",
+                "DOCKER_HF_CACHE_PATH",
+                "LISPMDOC_PODMAN_BIN",
+                "LISPMDOC_PADDLE_RAW_OUTPUT_ROOT",
+                "SURYA_INFERENCE_BACKEND",
+                "VLLM_GPU_TYPE",
+            )
+        },
+        "checks": checks,
+    }
+
+
+def preflight_failures(record: dict[str, Any]) -> list[str]:
+    checks = record["checks"]
+    failures = [name for name in ("podman", "nvidia_smi") if checks[name].get("returncode") != 0]
+    failures.extend(
+        f"{engine}-container"
+        for engine, check in checks["container_images"].items()
+        if check.get("returncode") != 0
+    )
+    failures.extend(
+        f"{engine}-version"
+        for engine, check in checks["engine_versions"].items()
+        if check is not None and check.get("returncode") != 0
+    )
+    return failures
+
+
+def evidence_identity(output: Path, relative_paths: Iterable[Path]) -> dict[str, dict[str, Any]]:
+    identity: dict[str, dict[str, Any]] = {}
+    for relative_path in sorted(relative_paths, key=str):
+        path = output / relative_path
+        require_regular_file(path, f"evidence file {relative_path}")
+        identity[str(relative_path)] = {
+            "sha256": sha256(path),
+            "byte_size": path.stat().st_size,
+        }
+    return identity
+
+
+def verify_evidence_identity(output: Path, expected: dict[str, dict[str, Any]]) -> None:
+    actual = evidence_identity(output, (Path(path) for path in expected))
+    if actual != expected:
+        raise RuntimeError("sealed plan or prior evidence changed during execution")
+
+
+def write_evidence_seal(output: Path, identity: dict[str, dict[str, Any]]) -> None:
+    write_json(output / "provenance/evidence-seal.json", {"format": FORMAT, "files": identity})
+
+
+def execute(plan: dict[str, Any], args: argparse.Namespace) -> int:
+    repo_root = args.repo_root.resolve()
+    output = args.output.resolve()
+    output.mkdir(parents=True)
+    write_json(output / "provenance/plan.json", plan)
+    run_record: dict[str, Any] = {
+        "format": FORMAT,
+        "state": "running",
+        "started_at": utc_now(),
+        "plan": "provenance/plan.json",
+    }
+    write_json(output / "run.json", run_record)
+
+    try:
+        snapshot_inputs(plan, repo_root, output)
+        paddle_raw_output = output / "paddleocr/raw"
+        paddle_raw_output.mkdir(parents=True)
+        if paddle_raw_output.is_symlink() or not paddle_raw_output.is_dir():
+            raise RuntimeError("Paddle raw output root is not a regular directory")
+
+        sealed_evidence = evidence_identity(output, [Path("provenance/plan.json")])
+
+        preflight_record = preflight(plan, args, paddle_raw_output)
+        verify_evidence_identity(output, sealed_evidence)
+        verify_input_snapshots(plan, output)
+        if any(paddle_raw_output.iterdir()):
+            raise RuntimeError("Paddle preflight wrote to its raw output root")
+        write_json(output / "provenance/preflight.json", preflight_record)
+        for engine, verification in preflight_record["checks"]["models"].items():
+            write_json(output / f"provenance/models/{engine}.json", verification)
+        sealed_evidence = evidence_identity(
+            output,
+            [
+                Path("provenance/plan.json"),
+                Path("provenance/preflight.json"),
+                *(
+                    Path(f"provenance/models/{engine}.json")
+                    for engine in preflight_record["checks"]["models"]
+                ),
+            ],
+        )
+        write_evidence_seal(output, sealed_evidence)
+        failed_checks = preflight_failures(preflight_record)
+        if failed_checks:
+            raise RuntimeError(
+                f"required container image is unavailable: {', '.join(failed_checks)}"
+            )
+
+        commands = plan["inference_commands"]
+        environment = child_environment(
+            args.model_root.resolve(), args.podman_bin.resolve(), paddle_raw_output
+        )
+        for number, command in enumerate(commands, start=1):
+            verify_evidence_identity(output, sealed_evidence)
+            record = run_command(command, env=environment)
+            write_json(output / f"provenance/commands/{number:03d}.json", record)
+            if record["returncode"] != 0:
+                raise RuntimeError(f"inference command {number} failed; raw logs are retained")
+            verify_input_snapshots(plan, output)
+            verify_evidence_identity(output, sealed_evidence)
+            sealed_evidence = evidence_identity(
+                output,
+                [*map(Path, sealed_evidence), Path(f"provenance/commands/{number:03d}.json")],
+            )
+            write_evidence_seal(output, sealed_evidence)
+
+        verify_input_snapshots(plan, output)
+        validate_expected_raw_output(plan, output)
+        write_raw_inventory(output)
+        run_record.update(
+            {"state": "completed", "finished_at": utc_now(), "command_count": len(commands)}
+        )
+        write_json(output / "run.json", run_record)
+        return 0
+    except Exception as error:
+        failure = str(error)
+        try:
+            write_raw_inventory(output)
+        except Exception as inventory_error:
+            failure = f"{failure}; raw inventory rejected: {inventory_error}"
+        run_record.update({"state": "failed", "finished_at": utc_now(), "error": failure})
+        write_json(output / "run.json", run_record)
+        print(f"run retained at {output}: {failure}", file=sys.stderr)
+        return 1
+
+
+def main() -> int:
+    repository_root = Path(__file__).resolve().parents[1]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=repository_root, help=argparse.SUPPRESS)
+    parser.add_argument("--render-manifest", type=Path, default=repository_root / DEFAULT_MANIFEST)
+    parser.add_argument("--output", type=Path, required=True, help="new directory below work/")
+    parser.add_argument(
+        "--pages", default="91-110", help="comma-separated numbers or inclusive ranges"
+    )
+    parser.add_argument("--engine", choices=("surya", "paddleocr", "both"), default="both")
+    parser.add_argument("--model-root", type=Path, default=repository_root / "work/models")
+    parser.add_argument(
+        "--source-pdf",
+        type=Path,
+        default=repository_root / "source-material/bitsavers/pdf/mit/cadr/chinual_4thEd_Jul81.pdf",
+    )
+    parser.add_argument(
+        "--podman-bin",
+        type=Path,
+        default=Path(os.environ.get("LISPMDOC_PODMAN_BIN", shutil.which("podman") or "/missing")),
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--dry-run", action="store_true", help="validate inputs and print commands only"
+    )
+    mode.add_argument(
+        "--preflight",
+        action="store_true",
+        help="verify models, images, and runtime without inference",
+    )
+    args = parser.parse_args()
+    args.repo_root = args.repo_root.resolve()
+    args.render_manifest = args.render_manifest.resolve()
+    args.output = args.output.resolve()
+    args.model_root = args.model_root.resolve()
+    args.source_pdf = args.source_pdf.absolute()
+    args.podman_bin = args.podman_bin.resolve()
+
+    if args.output.exists():
+        parser.error(f"refusing to overwrite existing output: {args.output}")
+    if not args.podman_bin.is_file() or not os.access(args.podman_bin, os.X_OK):
+        parser.error(f"Podman executable is unavailable: {args.podman_bin}")
+    try:
+        plan = build_plan(args)
+        if args.dry_run:
+            print(
+                json.dumps(
+                    {"format": FORMAT, "dry_run": True, "plan": plan}, indent=2, sort_keys=True
+                )
+            )
+            return 0
+        if args.preflight:
+            with tempfile.TemporaryDirectory(
+                prefix=".ocr-preflight-", dir=args.repo_root / "work"
+            ) as root:
+                paddle_raw_output = Path(root) / "paddleocr/raw"
+                paddle_raw_output.mkdir(parents=True)
+                record = preflight(plan, args, paddle_raw_output)
+            print(json.dumps(record, indent=2, sort_keys=True))
+            return 1 if preflight_failures(record) else 0
+        return execute(plan, args)
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        print(f"preparation failed: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

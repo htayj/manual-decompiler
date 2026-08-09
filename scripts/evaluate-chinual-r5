@@ -1,0 +1,545 @@
+#!/usr/bin/env python3
+"""Fail-closed geometry/text evaluation for the sealed Chinual OCR r5 run.
+
+This is deliberately an evaluator, not an engine selector.  Freshly recovered
+source text is split into authoritative and provisional strata before any
+metric is calculated; the latter is reported as an exploratory comparison.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from collections.abc import Mapping, Sequence
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Any
+
+from lispmdoc.benchmark.chinual_recovered import (
+    ChinualPageRecord,
+    import_chinual_recovered_slice,
+)
+from lispmdoc.benchmark.spatial_evaluation import semantic_ocr_text
+from lispmdoc.ocr.evaluation import GroundTruthRegion, evaluate_ground_truth
+
+FORMAT = "lispmdoc-chinual-r5-evaluation-1"
+RUN_FORMAT = "lispmdoc-provenance-ocr-run-1"
+
+
+class EvaluationError(ValueError):
+    """A sealed run or its geometry-bearing raw output is not trustworthy."""
+
+
+class _HTMLText(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "br":
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in {"div", "li", "p", "pre"}:
+            self.parts.append("\n")
+
+
+def _html_text(value: str) -> str:
+    parser = _HTMLText()
+    parser.feed(value)
+    return "".join(parser.parts)
+
+
+def _sha(path: Path) -> str:
+    if path.is_symlink() or not path.is_file():
+        raise EvaluationError(f"required evidence file is missing: {path}")
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _load(path: Path) -> dict[str, Any]:
+    try:
+        result = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise EvaluationError(f"cannot read JSON evidence: {path}") from error
+    if not isinstance(result, dict):
+        raise EvaluationError(f"JSON evidence must be an object: {path}")
+    return result
+
+
+def _json_bytes(content: bytes, label: str) -> dict[str, Any]:
+    try:
+        result = json.loads(content)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise EvaluationError(f"cannot parse buffered JSON {label}") from error
+    if not isinstance(result, dict):
+        raise EvaluationError(f"buffered JSON {label} must be an object")
+    return result
+
+
+def _contained(root: Path, relative: object, label: str) -> Path:
+    if not isinstance(relative, str):
+        raise EvaluationError(f"{label} path must be a relative string")
+    candidate = Path(relative)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise EvaluationError(f"{label} path escapes its root")
+    if root.is_symlink() or not root.is_dir():
+        raise EvaluationError(f"{label} root must be a non-symlink directory")
+    current = root
+    for part in candidate.parts:
+        current = current / part
+        if current.is_symlink():
+            raise EvaluationError(f"{label} path must not traverse a symlink")
+    resolved_root = root.resolve()
+    resolved = current.resolve()
+    if not resolved.is_relative_to(resolved_root) or not resolved.is_file():
+        raise EvaluationError(f"{label} path is not a regular contained file")
+    return resolved
+
+
+def _identity(path: Path, value: object, label: str) -> None:
+    _read_identity(path, value, label)
+
+
+def _read_identity(path: Path, value: object, label: str) -> bytes:
+    if not isinstance(value, dict):
+        raise EvaluationError(f"{label} identity must be an object")
+    digest, size = value.get("sha256"), value.get("byte_size")
+    if not isinstance(digest, str) or not isinstance(size, int) or size < 1:
+        raise EvaluationError(f"{label} identity is malformed")
+    if path.is_symlink() or not path.is_file():
+        raise EvaluationError(f"{label} is not a regular file")
+    content = path.read_bytes()
+    if len(content) != size or hashlib.sha256(content).hexdigest() != digest:
+        raise EvaluationError(f"{label} bytes do not match sealed identity")
+    return content
+
+
+def _verify_external_receipt(root: Path, run_root: Path) -> tuple[dict[str, str], dict[str, bytes]]:
+    receipt_path = _contained(root, "config/benchmarks/chinual-r5-receipt.json", "receipt")
+    receipt_bytes = receipt_path.read_bytes()
+    receipt = _json_bytes(receipt_bytes, "receipt")
+    if receipt.get("format_version") != "lispmdoc-chinual-r5-receipt-1":
+        raise EvaluationError("r5 receipt format is unsupported")
+    relative_root = receipt.get("run_directory")
+    if not isinstance(relative_root, str):
+        raise EvaluationError("r5 receipt run_directory is malformed")
+    expected_root = root / relative_root
+    receipt_run = _contained(root, f"{relative_root}/run.json", "receipt run directory")
+    resolved_expected_root = expected_root.resolve()
+    if receipt_run.parent != resolved_expected_root or resolved_expected_root != run_root.resolve():
+        raise EvaluationError("r5 run directory is not the externally receipted root")
+    roots = receipt.get("roots")
+    required = {
+        "run.json",
+        "provenance/plan.json",
+        "provenance/preflight.json",
+        "provenance/evidence-seal.json",
+        "provenance/raw-output-inventory.json",
+    }
+    if not isinstance(roots, dict) or set(roots) != required:
+        raise EvaluationError("r5 receipt root inventory is incomplete")
+    buffered = {
+        relative: _read_identity(
+            _contained(run_root, relative, "receipt root"), identity, "receipt root"
+        )
+        for relative, identity in roots.items()
+    }
+    return {
+        "path": str(receipt_path.relative_to(root)),
+        "sha256": hashlib.sha256(receipt_bytes).hexdigest(),
+    }, buffered
+
+
+def _bbox(value: object, label: str) -> tuple[float, float, float, float]:
+    if not isinstance(value, list) or len(value) != 4:
+        raise EvaluationError(f"{label} bbox must have four coordinates")
+    try:
+        result = tuple(float(item) for item in value)
+    except (TypeError, ValueError) as error:
+        raise EvaluationError(f"{label} bbox is malformed") from error
+    if result[2] <= result[0] or result[3] <= result[1]:
+        raise EvaluationError(f"{label} bbox has no area")
+    return result  # type: ignore[return-value]
+
+
+def _polygon_bbox(value: object, label: str) -> tuple[float, float, float, float]:
+    if not isinstance(value, list) or len(value) < 3:
+        raise EvaluationError(f"{label} polygon must have at least three points")
+    points: list[tuple[float, float]] = []
+    for point in value:
+        if not isinstance(point, list) or len(point) != 2:
+            raise EvaluationError(f"{label} polygon point is malformed")
+        try:
+            points.append((float(point[0]), float(point[1])))
+        except (TypeError, ValueError) as error:
+            raise EvaluationError(f"{label} polygon point is malformed") from error
+    return (
+        min(x for x, _ in points),
+        min(y for _, y in points),
+        max(x for x, _ in points),
+        max(y for _, y in points),
+    )
+
+
+def _overlap(
+    left: tuple[float, float, float, float], right: tuple[float, float, float, float]
+) -> float:
+    return max(0.0, min(left[2], right[2]) - max(left[0], right[0])) * max(
+        0.0, min(left[3], right[3]) - max(left[1], right[1])
+    )
+
+
+def _surya_lines(
+    value: Mapping[str, Any], page: int
+) -> tuple[tuple[str, tuple[float, float, float, float]], ...]:
+    entries = value.get(f"p{page:06d}")
+    if not isinstance(entries, list) or len(entries) != 1 or not isinstance(entries[0], dict):
+        raise EvaluationError(f"Surya raw page {page} must contain exactly one result")
+    blocks = entries[0].get("blocks")
+    if not isinstance(blocks, list):
+        raise EvaluationError(f"Surya raw page {page} lacks blocks")
+    result = []
+    for index, block in enumerate(blocks):
+        if not isinstance(block, dict) or not isinstance(block.get("html"), str):
+            raise EvaluationError(f"Surya raw page {page} block {index} is malformed")
+        result.append((_html_text(block["html"]), _bbox(block.get("bbox"), "Surya")))
+    return tuple(result)
+
+
+def _paddle_lines(
+    value: Mapping[str, Any], page: int
+) -> tuple[tuple[str, tuple[float, float, float, float]], ...]:
+    result = value.get("res")
+    if not isinstance(result, dict):
+        raise EvaluationError(f"Paddle raw page {page} lacks res")
+    texts, polygons = result.get("rec_texts"), result.get("dt_polys")
+    if not isinstance(texts, list) or not isinstance(polygons, list) or len(texts) != len(polygons):
+        raise EvaluationError(f"Paddle raw page {page} text/polygon inventories differ")
+    if any(not isinstance(text, str) for text in texts):
+        raise EvaluationError(f"Paddle raw page {page} has non-text recognition output")
+    return tuple(
+        (text, _polygon_bbox(polygon, "Paddle"))
+        for text, polygon in zip(texts, polygons, strict=True)
+    )
+
+
+def _verify_run(
+    root: Path, run_root: Path, records: Sequence[ChinualPageRecord]
+) -> tuple[dict[str, Any], dict[str, str], dict[str, str], dict[str, bytes], dict[str, bytes]]:
+    receipt, roots = _verify_external_receipt(root, run_root)
+    run = _json_bytes(roots["run.json"], "run.json")
+    plan = _json_bytes(roots["provenance/plan.json"], "plan.json")
+    if (
+        run.get("format") != RUN_FORMAT
+        or run.get("state") != "completed"
+        or run.get("plan") != "provenance/plan.json"
+    ):
+        raise EvaluationError("r5 run is not a completed provenance OCR run")
+    if plan.get("format") != RUN_FORMAT or plan.get("output") != "work/chinual-slice/ocr-rerun-r5":
+        raise EvaluationError("r5 plan has an unexpected format or output root")
+    requested = plan.get("requested")
+    expected_pages = [record.page_number for record in records]
+    if (
+        not isinstance(requested, dict)
+        or requested.get("engine") != "both"
+        or requested.get("pages") != expected_pages
+    ):
+        raise EvaluationError("r5 plan does not request both engines over the recovered slice")
+    if (
+        run.get("command_count") != len(plan.get("inference_commands", []))
+        or run.get("command_count") != 21
+    ):
+        raise EvaluationError("r5 command inventory is incomplete")
+    preflight = _json_bytes(roots["provenance/preflight.json"], "preflight.json")
+    if preflight.get("format") != RUN_FORMAT or preflight.get("plan") != plan:
+        raise EvaluationError("r5 preflight is not bound to the recorded plan")
+    checks = preflight.get("checks")
+    if not isinstance(checks, dict):
+        raise EvaluationError("r5 preflight checks are malformed")
+    for key in ("podman", "nvidia_smi"):
+        if not isinstance(checks.get(key), dict) or checks[key].get("returncode") != 0:
+            raise EvaluationError(f"r5 preflight {key} did not pass")
+    for key in ("models", "container_images", "engine_versions"):
+        values = checks.get(key)
+        if not isinstance(values, dict) or set(values) != {"surya", "paddleocr"}:
+            raise EvaluationError(f"r5 preflight {key} is incomplete")
+        if key == "models":
+            valid = all(
+                isinstance(item, dict)
+                and isinstance(item.get("lock"), dict)
+                and isinstance(item.get("verified_files"), list)
+                and bool(item["verified_files"])
+                for item in values.values()
+            )
+        else:
+            valid = all(
+                isinstance(item, dict) and item.get("returncode") == 0 for item in values.values()
+            )
+        if not valid:
+            raise EvaluationError(f"r5 preflight {key} did not pass")
+    seal = _json_bytes(roots["provenance/evidence-seal.json"], "evidence-seal.json")
+    files = seal.get("files")
+    if seal.get("format") != RUN_FORMAT or not isinstance(files, dict) or not files:
+        raise EvaluationError("r5 evidence seal is malformed")
+    for relative, identity in files.items():
+        _identity(_contained(run_root, relative, "sealed evidence"), identity, "sealed evidence")
+    inventory = _json_bytes(roots["provenance/raw-output-inventory.json"], "raw inventory")
+    raw = inventory.get("files")
+    if inventory.get("format") != RUN_FORMAT or not isinstance(raw, list):
+        raise EvaluationError("r5 raw inventory is malformed")
+    expected_raw = {"surya/raw/inputs/results.json"} | {
+        f"paddleocr/raw/p{page:06d}.json" for page in expected_pages
+    }
+    inventory_paths: dict[str, str] = {}
+    raw_buffers: dict[str, bytes] = {}
+    for entry in raw:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise EvaluationError("r5 raw inventory entry is malformed")
+        relative = entry["path"]
+        if relative in inventory_paths:
+            raise EvaluationError("r5 raw inventory has duplicate paths")
+        path = _contained(run_root, relative, "raw inventory")
+        raw_buffers[relative] = _read_identity(path, entry, "raw inventory")
+        inventory_paths[relative] = str(entry["sha256"])
+    if set(inventory_paths) != expected_raw:
+        raise EvaluationError("r5 raw inventory does not exactly cover expected outputs")
+    actual_raw: set[str] = set()
+    for base in (
+        _contained(run_root, "surya/raw/inputs/results.json", "Surya raw").parent.parent,
+        _contained(run_root, f"paddleocr/raw/p{expected_pages[0]:06d}.json", "Paddle raw").parent,
+    ):
+        for path in base.rglob("*"):
+            if path.is_symlink():
+                raise EvaluationError("r5 raw output trees must not contain symlinks")
+            if path.is_file():
+                actual_raw.add(str(path.relative_to(run_root)))
+    if actual_raw != expected_raw:
+        raise EvaluationError("r5 raw output trees contain unsealed or missing files")
+    input_records = plan.get("inputs")
+    if not isinstance(input_records, list) or len(input_records) != len(records):
+        raise EvaluationError("r5 plan input inventory is incomplete")
+    input_digests: dict[str, str] = {}
+    for entry, record in zip(input_records, records, strict=True):
+        if not isinstance(entry, dict) or entry.get("page_number") != record.page_number:
+            raise EvaluationError("r5 plan input order does not bind recovered pages")
+        if entry.get("sha256") != record.queue_page.render_sha256:
+            raise EvaluationError("r5 plan input digest differs from recovered page render")
+        snapshot = _contained(
+            run_root, f"inputs/p{record.page_number:06d}.png", "r5 input snapshot"
+        )
+        _identity(snapshot, entry, "r5 input snapshot")
+        input_digests[str(record.page_number)] = record.queue_page.render_sha256
+    return plan, inventory_paths, receipt, raw_buffers, roots
+
+
+def _score_page(
+    record: ChinualPageRecord,
+    manifest_page: Mapping[str, Any],
+    lines: Sequence[tuple[str, tuple[float, float, float, float]]],
+) -> tuple[list[GroundTruthRegion], dict[str, str], int, list[dict[str, object]]]:
+    manifest_regions = manifest_page.get("regions")
+    if not isinstance(manifest_regions, list) or len(manifest_regions) != len(record.regions):
+        raise EvaluationError(f"r33 geometry is incomplete for page {record.page_number}")
+    geometry = {
+        item.get("region_id"): _bbox(item.get("bbox"), "r33 region")
+        for item in manifest_regions
+        if isinstance(item, dict)
+    }
+    if len(geometry) != len(manifest_regions) or set(geometry) != {
+        region.region_id for region in record.regions
+    }:
+        raise EvaluationError(
+            f"r33 geometry does not match recovered regions on page {record.page_number}"
+        )
+    assigned: dict[str, list[tuple[str, tuple[float, float, float, float]]]] = {
+        region.region_id: [] for region in record.regions
+    }
+    unassigned: list[dict[str, object]] = []
+    for line in lines:
+        candidates = [(_overlap(line[1], box), region_id) for region_id, box in geometry.items()]
+        candidates = [item for item in candidates if item[0] > 0]
+        if not candidates:
+            unassigned.append({"bbox": list(line[1]), "text": line[0]})
+        else:
+            _, region_id = max(candidates, key=lambda item: (item[0], item[1]))
+            assigned[region_id].append(line)
+    truth: list[GroundTruthRegion] = []
+    predictions: dict[str, str] = {}
+    matched = 0
+    for region in record.regions:
+        selected = sorted(assigned[region.region_id], key=lambda item: (item[1][1], item[1][0]))
+        separator = "\n" if region.kind == "code" else " "
+        prediction = separator.join(text.strip() for text, _ in selected if text.strip())
+        kind = "code" if region.kind == "code" else "prose"
+        truth.append(
+            GroundTruthRegion(
+                f"p{record.page_number:06d}/{region.region_id}",
+                semantic_ocr_text(region.literal_text, kind),
+                kind,
+            )
+        )
+        predictions[f"p{record.page_number:06d}/{region.region_id}"] = semantic_ocr_text(
+            prediction, kind
+        )
+        matched += bool(prediction)
+    return truth, predictions, matched, unassigned
+
+
+def _engine_report(
+    *,
+    name: str,
+    records: Sequence[ChinualPageRecord],
+    manifest: Mapping[int, Mapping[str, Any]],
+    raw: Mapping[int, Any],
+) -> dict[str, object]:
+    grouped: dict[str, dict[str, object]] = {}
+    for disposition in ("authoritative", "provisional"):
+        truth: list[GroundTruthRegion] = []
+        predictions: dict[str, str] = {}
+        matched = lines = 0
+        unassigned: list[dict[str, object]] = []
+        page_count = 0
+        for record in records:
+            if record.disposition != disposition:
+                continue
+            page_truth, page_predictions, page_matched, page_unassigned = _score_page(
+                record, manifest[record.page_number], raw[record.page_number]
+            )
+            truth.extend(page_truth)
+            predictions.update(page_predictions)
+            matched += page_matched
+            unassigned.extend(
+                {"page_number": record.page_number, **item} for item in page_unassigned
+            )
+            lines += len(raw[record.page_number])
+            page_count += 1
+        report = evaluate_ground_truth(truth, predictions).to_dict()
+        grouped[disposition] = {
+            "eligibility": "metric-eligible"
+            if disposition == "authoritative"
+            else "exploratory-only",
+            "label": "fresh-source-and-review-agree"
+            if disposition == "authoritative"
+            else "fresh-source-disagrees-with-stored-final-manifest-text",
+            "normalization": (
+                "collapse Unicode whitespace for prose; preserve code newlines and tokens"
+            ),
+            "pages": page_count,
+            "metrics": report,
+            "spatial": {
+                "content_regions": len(truth),
+                "matched_regions": matched,
+                "nonempty_region_assignment_rate": matched / len(truth) if truth else 1.0,
+                "unassigned_lines": unassigned,
+                "raw_lines": lines,
+                "layout_quality_claim": False,
+            },
+        }
+    return {"engine": name, "strata": grouped}
+
+
+def build_report(root: Path, run_directory: Path | None = None) -> dict[str, object]:
+    if root.is_symlink() or not root.is_dir():
+        raise EvaluationError("project root must be a non-symlink directory")
+    recovered = import_chinual_recovered_slice(root)
+    run_candidate = run_directory or root / "work/chinual-slice/ocr-rerun-r5"
+    if run_candidate.is_symlink() or not run_candidate.is_dir():
+        raise EvaluationError("r5 run root must be a non-symlink directory")
+    run_root = run_candidate.resolve()
+    plan, raw_digests, receipt, raw_buffers, roots = _verify_run(root, run_root, recovered.records)
+    if (
+        hashlib.sha256(recovered.final_manifest_bytes).hexdigest()
+        != recovered.final_manifest_sha256
+    ):
+        raise EvaluationError("recovered importer supplied an invalid final r33 manifest buffer")
+    manifest_value = _json_bytes(recovered.final_manifest_bytes, "final r33 manifest")
+    manifest = {
+        page["page_number"]: page
+        for page in manifest_value.get("pages", [])
+        if isinstance(page, dict) and isinstance(page.get("page_number"), int)
+    }
+    if set(manifest) != {record.page_number for record in recovered.records}:
+        raise EvaluationError("final r33 manifest page inventory differs from recovered records")
+    surya_value = _json_bytes(raw_buffers["surya/raw/inputs/results.json"], "Surya raw")
+    surya = {
+        record.page_number: _surya_lines(surya_value, record.page_number)
+        for record in recovered.records
+    }
+    paddle = {
+        record.page_number: _paddle_lines(
+            _json_bytes(raw_buffers[f"paddleocr/raw/p{record.page_number:06d}.json"], "Paddle raw"),
+            record.page_number,
+        )
+        for record in recovered.records
+    }
+    return {
+        "format_version": FORMAT,
+        "engine_selection": {
+            "disposition": "not-selected",
+            "reason": (
+                "Only six source/review-agreeing pages are authoritative; the other fourteen "
+                "are explicitly exploratory, and no independent human truth, acceptance "
+                "thresholds, or adjudicated layout benchmark exists."
+            ),
+        },
+        "inputs": {
+            "plan_sha256": hashlib.sha256(roots["provenance/plan.json"]).hexdigest(),
+            "raw_digests": dict(sorted(raw_digests.items())),
+            "r33_manifest_sha256": recovered.final_manifest_sha256,
+            "receipt": receipt,
+            "run_root": str(run_root.relative_to(root)),
+        },
+        "recovered_truth": {
+            "authoritative_pages": len(recovered.authoritative_pages),
+            "provisional_pages": len(recovered.records) - len(recovered.authoritative_pages),
+            "provisional_evidence_gaps": list(recovered.evidence_gaps),
+        },
+        "engines": {
+            "surya": _engine_report(
+                name="surya", records=recovered.records, manifest=manifest, raw=surya
+            ),
+            "paddleocr": _engine_report(
+                name="paddleocr", records=recovered.records, manifest=manifest, raw=paddle
+            ),
+        },
+        "limitations": [
+            "Provisional source comparisons are not authoritative truth and cannot support "
+            "engine selection.",
+            "Spatial association is overlap-based against reviewed replica boxes, not "
+            "independently adjudicated layout truth.",
+            "No independent double transcription, confidence calibration, table-cell "
+            "structure score, or selection threshold is present.",
+        ],
+        "plan_requested_pages": plan["requested"]["pages"],
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--project-root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--run-directory", type=Path, default=Path("work/chinual-slice/ocr-rerun-r5")
+    )
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    root = args.project_root.absolute()
+    run = args.run_directory if args.run_directory.is_absolute() else root / args.run_directory
+    output = args.output or run / "evaluation.json"
+    if not output.is_absolute():
+        output = root / output
+    if output.exists():
+        raise FileExistsError(f"refusing to overwrite evaluation output: {output}")
+    report = build_report(root, run)
+    with output.open("x", encoding="utf-8") as stream:
+        json.dump(report, stream, ensure_ascii=False, indent=2, sort_keys=True)
+        stream.write("\n")
+    print(output)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

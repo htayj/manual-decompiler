@@ -1,0 +1,26 @@
+{
+  "format_version": "lispmdoc-chinual-r5-receipt-1",
+  "roots": {
+    "provenance/evidence-seal.json": {
+      "byte_size": 3885,
+      "sha256": "10e83855585e8c6d5798adcd7b2f1328cd772e839fe63c2b1bc73bab1f5488ca"
+    },
+    "provenance/plan.json": {
+      "byte_size": 19672,
+      "sha256": "52d6fd8bd3f6254987107d9c21c8813d5f8a35fc5ea626999fed65d19ec82fec"
+    },
+    "provenance/preflight.json": {
+      "byte_size": 136374,
+      "sha256": "7b087263aa6d757b3bd0db162f54baae9b3436248c318afb81c1c0debf6d9950"
+    },
+    "provenance/raw-output-inventory.json": {
+      "byte_size": 3564,
+      "sha256": "0130bd4a699c5573addad90abb60c0fedd426282eb6d42f4b5dc43d063e9be5f"
+    },
+    "run.json": {
+      "byte_size": 224,
+      "sha256": "ce2ae373d13cc31baddcacdac2526822f6e11612d001f80cdffe2abc5739d375"
+    }
+  },
+  "run_directory": "work/chinual-slice/ocr-rerun-r5"
+}

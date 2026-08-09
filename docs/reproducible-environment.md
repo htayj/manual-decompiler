@@ -127,6 +127,32 @@ image ID is
 `8e4a92357c29996a95a4876f55a6fb08c8a902e9cc46f53afd4a37dd977efb52`.
 These are execution and identity checks, not OCR quality claims.
 
+On 2026-08-09 the hardened provenance runner completed Chinual PDF pages 91
+through 110 with Surya 0.22.1 and PaddleOCR 3.7.0/Paddle 3.0.0 on `gpu:0`.
+The ignored, no-overwrite run is `work/chinual-slice/ocr-rerun-r5`. It binds
+the actual source PDF, copied render snapshots, the exact Podman executable,
+the locked Paddle runtime image ID, launchers, model locks, engine versions,
+and GPU preflight. Paddle can write only its dedicated raw-output directory;
+the runner rehashes input snapshots and sealed plan/preflight/command evidence
+between commands. The sorted 21-file raw-output inventory has SHA-256
+`0130bd4a699c5573addad90abb60c0fedd426282eb6d42f4b5dc43d063e9be5f`.
+Surya verification covers the primary weight, revision, and aggregate snapshot
+size, not a per-file manifest for every auxiliary snapshot file. The earlier
+`ocr-rerun-r4` predates these controls and is retained only as provisional
+execution evidence. Neither run by itself establishes engine quality or
+selection, and ordinary ignored run files are not an immutable archive.
+
+The tracked receipt `config/benchmarks/chinual-r5-receipt.json` anchors the
+otherwise ignored r5 run, plan, preflight, evidence seal, and raw inventory by
+size and SHA-256. `uv run scripts/evaluate-chinual-r5` requires that receipt,
+rehashes its complete inputs, and keeps the 6 authoritative pages separate
+from the 14 pages with recovered-source disagreements. On the authoritative
+stratum, Surya/Paddle respectively measure 1.547%/1.745% semantic CER,
+0.893%/4.299% semantic WER, and 77.78%/82.96% exact code-token accuracy. These
+six pages are metric-eligible but insufficient for engine selection. The
+reported nonempty-region assignment rate is not a layout-quality metric, and
+the evaluation retains all unassigned raw lines for inspection.
+
 ## Evidence and updates
 
 Run `scripts/ocr-env-doctor` inside `nix develop` to emit machine-readable

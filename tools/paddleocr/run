@@ -4,16 +4,41 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+readonly LOCK_FILE="$REPO_ROOT/containers/images.lock.json"
 readonly PODMAN_BIN="${LISPMDOC_PODMAN_BIN:-$(command -v podman)}"
-readonly IMAGE="localhost/lispmdoc-paddleocr:3.7.0-cu126"
 readonly MODEL_ROOT="${LISPMDOC_MODEL_ROOT:-$REPO_ROOT/work/models}"
+readonly RAW_OUTPUT_ROOT="${LISPMDOC_PADDLE_RAW_OUTPUT_ROOT:?PaddleOCR launcher requires LISPMDOC_PADDLE_RAW_OUTPUT_ROOT}"
+readonly IMAGE_REFERENCE="$(jq -er '.images["paddle-runtime"].reference' "$LOCK_FILE")"
+readonly IMAGE_ID="$(jq -er '.images["paddle-runtime"].image_id' "$LOCK_FILE")"
+
+if [[ ! -x "$PODMAN_BIN" ]]; then
+  echo "PaddleOCR launcher: podman not found at $PODMAN_BIN" >&2
+  exit 127
+fi
+case "$RAW_OUTPUT_ROOT" in
+  "$REPO_ROOT"/work/*/paddleocr/raw) ;;
+  *)
+    echo "PaddleOCR launcher: raw output root must be below repository work/: $RAW_OUTPUT_ROOT" >&2
+    exit 64
+    ;;
+esac
+if [[ -L "$RAW_OUTPUT_ROOT" || ! -d "$RAW_OUTPUT_ROOT" ]]; then
+  echo "PaddleOCR launcher: raw output root must be a precreated regular directory" >&2
+  exit 64
+fi
+readonly RAW_OUTPUT_RELATIVE="${RAW_OUTPUT_ROOT#"$REPO_ROOT"/}"
+readonly RAW_OUTPUT_CONTAINER="/work/$RAW_OUTPUT_RELATIVE"
+if [[ "$("$PODMAN_BIN" image inspect "$IMAGE_REFERENCE" --format '{{.Id}}')" != "$IMAGE_ID" ]]; then
+  echo "PaddleOCR launcher: $IMAGE_REFERENCE does not have locked image ID $IMAGE_ID" >&2
+  exit 1
+fi
 
 mkdir -p "$MODEL_ROOT/paddleocr"
 
 exec "$PODMAN_BIN" run --rm \
   --device nvidia.com/gpu=all \
   --volume "$REPO_ROOT:/work:ro" \
-  --volume "$REPO_ROOT/work:/work/work:rw" \
+  --volume "$RAW_OUTPUT_ROOT:$RAW_OUTPUT_CONTAINER:rw" \
   --volume "$MODEL_ROOT/paddleocr:/root/.paddlex:rw" \
   --workdir /work \
-  "$IMAGE" "$@"
+  "$IMAGE_ID" "$@"
