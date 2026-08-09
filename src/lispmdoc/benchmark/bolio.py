@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 
 
@@ -377,6 +377,39 @@ def render_bolio_interval(
     return "\n\n".join(parts)
 
 
+def apply_section_numbers(
+    extraction: BolioExtraction, section_numbers: Mapping[int, str]
+) -> BolioExtraction:
+    """Return an extraction with externally proved numbers on exact headings.
+
+    The caller must establish the proof's document/source identity. This small
+    source-local transformation refuses a number for a non-section or absent
+    line, so it cannot silently decorate arbitrary prose.
+    """
+
+    if any(
+        isinstance(line, bool)
+        or not isinstance(line, int)
+        or line < 1
+        or not isinstance(number, str)
+        or not re.fullmatch(r"[1-9][0-9]*(?:\.[0-9]+)*\.?", number)
+        for line, number in section_numbers.items()
+    ):
+        raise BolioError("section-number proofs must map positive lines to numeric labels")
+    available = {
+        block.span.start_line: block for block in extraction.blocks if block.kind == "section"
+    }
+    if set(section_numbers) - set(available):
+        raise BolioError("section-number proof does not name an exact section heading")
+    blocks = tuple(
+        replace(block, section_number=section_numbers[block.span.start_line])
+        if block.kind == "section" and block.span.start_line in section_numbers
+        else block
+        for block in extraction.blocks
+    )
+    return BolioExtraction(blocks, extraction.issues, extraction.variables)
+
+
 def _parse_section_title(argument: str, line: int) -> str:
     title = argument.strip()
     if len(title) >= 2 and title[0] == title[-1] == '"':
@@ -636,6 +669,7 @@ __all__ = [
     "BolioSourceSpan",
     "BolioSyntaxError",
     "MissingCrossReferenceError",
+    "apply_section_numbers",
     "extract_bolio",
     "normalize_bolio_line",
     "parse_manual_vars",

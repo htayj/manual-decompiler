@@ -3,8 +3,10 @@ from __future__ import annotations
 import pytest
 
 from lispmdoc.benchmark.bolio import (
+    BolioError,
     BolioSyntaxError,
     MissingCrossReferenceError,
+    apply_section_numbers,
     extract_bolio,
     normalize_bolio_line,
     parse_manual_vars,
@@ -225,6 +227,16 @@ def test_apostrophe_cindex_command_is_nonprinting_metadata() -> None:
         ("section", "Sorting"),
         ("body", "Visible prose."),
     ]
+
+
+def test_section_number_proofs_apply_only_to_exact_section_lines() -> None:
+    extraction = extract_bolio(".section Sorting\nText.\n", VARS)
+
+    numbered = apply_section_numbers(extraction, {1: "5.10"})
+
+    assert numbered.blocks[0].section_number == "5.10"
+    with pytest.raises(BolioError):
+        apply_section_numbers(extraction, {2: "5.10"})
 
 
 def test_quoted_sail_not_equal_character_is_preserved_semantically() -> None:

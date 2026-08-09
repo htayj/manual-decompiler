@@ -481,8 +481,8 @@ def build_report(root: Path, run_directory: Path | None = None) -> dict[str, obj
         "engine_selection": {
             "disposition": "not-selected",
             "reason": (
-                "Only six source/review-agreeing pages are authoritative; the other fourteen "
-                "are explicitly exploratory, and no independent human truth, acceptance "
+                "Some source/review-agreeing pages are authoritative while the remaining "
+                "pages are explicitly exploratory, and no independent human truth, acceptance "
                 "thresholds, or adjudicated layout benchmark exists."
             ),
         },
@@ -492,6 +492,13 @@ def build_report(root: Path, run_directory: Path | None = None) -> dict[str, obj
             "r33_manifest_sha256": recovered.final_manifest_sha256,
             "receipt": receipt,
             "run_root": str(run_root.relative_to(root)),
+            "section_counter": {
+                "applied_proofs": [proof.to_dict() for proof in recovered.applied_section_proofs],
+                "manual_vars_sha256": recovered.section_counter_manual_vars_sha256,
+                "order_sha256": recovered.section_counter_order_sha256,
+                "receipt_sha256": recovered.section_counter_receipt_sha256,
+                "ti_script_sha256": recovered.section_counter_ti_script_sha256,
+            },
         },
         "recovered_truth": {
             "authoritative_pages": len(recovered.authoritative_pages),

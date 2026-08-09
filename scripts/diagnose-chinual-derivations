@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Emit a fail-closed report for r33 recovered-source disagreements."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from lispmdoc.benchmark.chinual_recovered import (
+    ChinualImportError,
+    diagnose_chinual_derivation_disagreements,
+)
+
+
+def _text(report: dict[str, object]) -> str:
+    summary = report["summary"]
+    assert isinstance(summary, dict)
+    counts = summary["category_counts"]
+    assert isinstance(counts, dict)
+    lines = [
+        f"r33 manifest: {report['final_manifest_sha256']}",
+        f"r33 review: {report['final_review_sha256']}",
+        f"mismatches: {summary['mismatch_count']} (stored digests bound: "
+        f"{summary['stored_digest_bound_count']})",
+    ]
+    lines.extend(f"{category}: {count}" for category, count in counts.items())
+    lines.append("")
+    for row in report["mismatches"]:
+        assert isinstance(row, dict)
+        lines.append(
+            f"p{row['page_number']}/{row['region_id']}: {row['category']} — {row['reason']}"
+        )
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument("--format", choices=("json", "text"), default="json")
+    args = parser.parse_args()
+    try:
+        report = diagnose_chinual_derivation_disagreements(args.root)
+    except ChinualImportError as error:
+        parser.error(str(error))
+    print(
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
+        if args.format == "json"
+        else _text(report)
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

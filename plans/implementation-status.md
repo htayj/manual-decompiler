@@ -329,12 +329,17 @@ Two independent evaluations are byte-identical at SHA-256
 `07f89a555715e3ae10f81519cbf571bbf9a5f7a2ef1bb32ba789344e51d981a6`.
 
 A fail-closed recovered-source importer now re-extracts every cited Bolio span
-instead of trusting replica-manifest text digests. This exposes 41 derivation
-disagreements across 14 pages: only 6 pages currently reproduce every stored
-region digest and qualify as authoritative; the other 14 are explicitly
-provisional. The importer still emits a deterministic 20-page Wave-1 queue,
-with source-semantic composition tags, but cannot silently promote those
-provisional pages.
+instead of trusting replica-manifest text digests. Its initial pass exposed 41
+derivation disagreements across 14 pages. A receipt-bound source-only counter
+model now proves all 12 numbered headings from the recovered fourth-edition
+build order, chapter/section directives, `manual.vars` anchors, and exact
+source bytes. It refuses ambiguous later wildcard inputs. This leaves 29
+disagreements across 9 provisional pages: 9 regions whose inclusive source
+line cannot exactly represent the stored fragment and 20 regions that agree
+only after explicit layout-whitespace normalization. Eleven pages now
+reproduce every stored region digest and qualify as authoritative. The
+importer still emits a deterministic 20-page Wave-1 queue with source-semantic
+composition tags and cannot silently promote provisional pages.
 
 A fail-closed runner now supports page subsets and no-overwrite Surya/Paddle
 run records. The hardened `ocr-rerun-r5` completed all 20 pages with Surya
@@ -353,24 +358,24 @@ evidence; neither ordinary ignored run directory is an immutable archive.
 The tracked r5 receipt externally anchors the ignored run roots. The
 fail-closed evaluator rehashes those roots and raw files, rejects symlinked or
 unreceipted substitutions, and binds the exact reviewed r33 geometry manifest.
-On the 6 authoritative pages, Surya/Paddle respectively measure 1.547%/1.745%
-semantic CER, 0.893%/4.299% semantic WER, and 77.78%/82.96% exact code-token
+On the 11 authoritative pages, Surya/Paddle respectively measure 1.185%/1.658%
+semantic CER, 0.535%/5.401% semantic WER, and 87.70%/88.89% exact code-token
 accuracy. Both engines assigned text to every reviewed content region and each
-left 30 raw lines unassigned. That assignment rate is explicitly not a layout
-quality score. The 14 provisional pages remain exploratory, and the evaluator
+left 55 raw lines unassigned. That assignment rate is explicitly not a layout
+quality score. The 9 provisional pages remain exploratory, and the evaluator
 correctly leaves engine selection at `not-selected`.
 
 ## Current automated verification
 
 ```text
 uv run pytest -q
-275 passed
+298 passed
 
 uv run ruff check .
 All checks passed
 
 uv run mypy src/lispmdoc
-Success: no issues found in 84 source files
+Success: no issues found in 86 source files
 
 git status --short
 tracked working tree clean after the recorded commit
@@ -402,9 +407,10 @@ tracked working tree clean after the recorded commit
   clean-environment reproducibility checks.
 - Replacement-ready conformance.
 
-The next implementation milestone is expanding authoritative ground truth
-beyond six pages while resolving the 41 recovered-source derivation
-disagreements on the other 14 pages. Expansion beyond this slice still needs a
-representative English benchmark and human mapping/layout approval. A
-corpus-wide OCR run should not happen before that benchmark can support
+The next implementation milestone is resolving the 9 source-span representation
+gaps and deciding how the canonical model should retain 20 scan-layout
+whitespace normalizations without confusing semantic truth with physical
+layout. Expansion beyond this slice still needs a representative English
+benchmark and human mapping/layout approval. A corpus-wide OCR run should not
+happen before that benchmark can support
 evidence-backed engine selection.
