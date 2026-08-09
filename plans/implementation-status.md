@@ -289,11 +289,32 @@ Vision comparison covered every changed page and region. Two clean r27/r28
 builds are byte-identical; the current full review-project SHA-256 is
 `162698b738b3ed0370f72d8c3433324b5da1d7f3f7fec4e4fb19e166e5ea0660`.
 
+Focused correction review accepted five of six regions. The remaining
+paragraph is a second paragraph within the same `:initial-copies` table item;
+it now reuses the body-column anchor established by the preceding item region
+instead of falling back to a generic open-table inset. This changes only page
+95, aligns the two description paragraphs, and restores the scan's three-line
+wrap. Two clean r29/r30 builds are byte-identical; the current full
+review-project SHA-256 is
+`cd4e5b9ab48decf77522eaecaa521ffcdedc8825187b4895a6355723d42b9cb5`.
+
+The follow-up review accepted that second paragraph and exposed a separate
+cross-page continuation issue in the first paragraph on page 95. Table-body
+anchors now persist across page boundaries, and a partial table paragraph
+continues at the established description column without acquiring a new
+first-line indent. A direct scan/replica crop comparison confirms that both
+page-95 continuation paragraphs now share that column while the keyword labels
+remain exdented. Two clean r32/r33 builds are byte-identical; the current full
+review-project SHA-256 is
+`6ba660618a4cc2e846568544e8bf01e424ab394c984887f2d26e0796fb2fd0df`.
+The focused human review accepted both corrected regions and page 95 as a
+whole, completing layout review of the 20-page source-backed replica slice.
+
 ## Current automated verification
 
 ```text
 uv run pytest -q
-243 passed
+244 passed
 
 uv run ruff check .
 All checks passed
@@ -331,7 +352,6 @@ tracked working tree clean after the recorded commit
   clean-environment reproducibility checks.
 - Replacement-ready conformance.
 
-The next implementation milestone is focused confirmation of the six corrected
-regions followed by measured evaluation of the 20-page source-backed replica
-slice. A corpus-wide OCR run should not happen before a representative English
-benchmark exists.
+The next implementation milestone is measured evaluation of the reviewed
+20-page source-backed replica slice. A corpus-wide OCR run should not happen
+before a representative English benchmark exists.

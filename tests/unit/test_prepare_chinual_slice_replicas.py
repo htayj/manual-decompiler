@@ -137,3 +137,17 @@ def test_table_scope_is_derived_from_source_directives() -> None:
 
     assert replica._inside_table(lines, 3)
     assert not replica._inside_table(lines, 5)
+
+
+def test_followup_table_paragraph_reuses_preceding_item_body_anchor() -> None:
+    replica = _replica_module()
+
+    assert replica._continued_table_body_bbox(
+        (819, 832, 2272, 993), optical_inset=10, prior_body_anchor=985
+    ) == (985, 832, 2272, 993)
+    assert replica._continued_table_body_bbox(
+        (819, 832, 2272, 993), optical_inset=10, prior_body_anchor=None
+    ) == (829, 832, 2272, 993)
+    assert replica._continued_table_body_bbox(
+        (819, 436, 2270, 548), optical_inset=164, prior_body_anchor=910
+    ) == (983, 436, 2270, 548)
