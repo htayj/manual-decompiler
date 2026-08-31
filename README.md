@@ -1,7 +1,9 @@
-# lispmdoc
+# Manual Decompiler
 
-`lispmdoc` will decompile historical manual PDFs into compact, machine-readable
-text, semantic structure, typography, vectors, and tightly scoped raster assets.
+Manual Decompiler turns historical technical-manual PDFs into compact,
+machine-readable text, semantic structure, typography, vectors, and tightly
+scoped raster assets. The current Python package, CLI, and output format retain
+the `lispmdoc`/LMDOC names.
 
 The conversion program and its schemas/tests belong in Git. Local inputs,
 intermediate work, and generated conversions do not.
@@ -66,6 +68,10 @@ uv run lispmdoc validate-schema schemas/manifest.schema.json
 uv run lispmdoc pack work/manual/authoring decompiled/manual.lmdoc
 ```
 
+If you are choosing or debugging OCR for a new manual, start with
+[`docs/ocr-guide.md`](docs/ocr-guide.md). It connects the runnable commands,
+GPU/runtime locks, benchmark method, and the tracked Surya/PaddleOCR bakeoff.
+
 `inspect` records a source hash before analysis and verifies it again afterward.
 Its classification is page-level evidence, not a claim that existing text or
 OCR is correct.
@@ -116,3 +122,8 @@ The material gate reloads both exact files and refuses digest-shaped substitutes
 The current Chinual pilot also has a reproducible, explicitly provisional
 spatial text report via `scripts/evaluate-chinual-authoritative-pilot`; it does
 not select an OCR engine from a single page.
+
+The later 20-page Chinual bakeoff is tracked as machine-readable evidence at
+[`benchmarks/results/chinual-ti4ed-surya-paddle-r5.json`](benchmarks/results/chinual-ti4ed-surya-paddle-r5.json).
+Its source-derived truth is metric-eligible but not independent human truth, so
+the report deliberately leaves the default engine unselected.

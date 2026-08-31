@@ -1,0 +1,2832 @@
+{
+  "engine_selection": {
+    "disposition": "not-selected",
+    "reason": "The recovered semantic channel is source-derived and its separately recorded physical r33 projections are not independent human truth; no acceptance thresholds or adjudicated layout benchmark exists."
+  },
+  "engines": {
+    "paddleocr": {
+      "engine": "paddleocr",
+      "strata": {
+        "authoritative": {
+          "eligibility": "metric-eligible",
+          "label": "fresh-source-semantic-with-exact-or-receipted-r33-physical-text",
+          "metrics": {
+            "case": {
+              "accuracy": 0.9877244411872481,
+              "correct": 32346,
+              "deletions": 83,
+              "error_rate": 0.015084890680346892,
+              "errors": 494,
+              "insertions": 92,
+              "reference_units": 32748,
+              "substitutions": 319
+            },
+            "cer": {
+              "accuracy": 0.983471465782619,
+              "correct": 41532,
+              "deletions": 324,
+              "error_rate": 0.01979635330333886,
+              "errors": 836,
+              "insertions": 138,
+              "reference_units": 42230,
+              "substitutions": 374
+            },
+            "code_tokens": {
+              "accuracy": 0.8641025641025641,
+              "exact_tokens": 337,
+              "extra_tokens": 2,
+              "omitted_tokens": 6,
+              "reference_tokens": 390
+            },
+            "omissions": {
+              "extra_region_ids": [],
+              "matched_regions": 269,
+              "omitted_characters": 0,
+              "omitted_region_ids": [],
+              "required_regions": 269,
+              "silently_omitted_regions": 0
+            },
+            "punctuation": {
+              "accuracy": 0.9773781902552204,
+              "correct": 1685,
+              "deletions": 24,
+              "error_rate": 0.03654292343387471,
+              "errors": 63,
+              "insertions": 24,
+              "reference_units": 1724,
+              "substitutions": 15
+            },
+            "wer": {
+              "accuracy": 0.9450265342223432,
+              "correct": 6945,
+              "deletions": 26,
+              "error_rate": 0.057967070349707446,
+              "errors": 426,
+              "insertions": 22,
+              "reference_units": 7349,
+              "substitutions": 378
+            }
+          },
+          "normalization": "collapse Unicode whitespace for prose; preserve code newlines and tokens",
+          "pages": 20,
+          "spatial": {
+            "content_regions": 269,
+            "layout_quality_claim": false,
+            "matched_regions": 269,
+            "nonempty_region_assignment_rate": 1.0,
+            "raw_lines": 832,
+            "unassigned_lines": [
+              {
+                "bbox": [
+                  1300.0,
+                  276.0,
+                  1361.0,
+                  330.0
+                ],
+                "page_number": 91,
+                "text": "79"
+              },
+              {
+                "bbox": [
+                  2130.0,
+                  270.0,
+                  2280.0,
+                  334.0
+                ],
+                "page_number": 91,
+                "text": "Sorting"
+              },
+              {
+                "bbox": [
+                  390.0,
+                  280.0,
+                  792.0,
+                  333.0
+                ],
+                "page_number": 91,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  397.0,
+                  3184.0,
+                  911.0,
+                  3223.0
+                ],
+                "page_number": 91,
+                "text": "MC:IMM1AN:IDCON 139"
+              },
+              {
+                "bbox": [
+                  2079.0,
+                  3177.0,
+                  2272.0,
+                  3221.0
+                ],
+                "page_number": 91,
+                "text": "21-JU01 -81"
+              },
+              {
+                "bbox": [
+                  306.0,
+                  259.0,
+                  459.0,
+                  322.0
+                ],
+                "page_number": 92,
+                "text": "Sorting"
+              },
+              {
+                "bbox": [
+                  1223.0,
+                  264.0,
+                  1283.0,
+                  317.0
+                ],
+                "page_number": 92,
+                "text": "80"
+              },
+              {
+                "bbox": [
+                  1793.0,
+                  268.0,
+                  2193.0,
+                  318.0
+                ],
+                "page_number": 92,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  302.0,
+                  3174.0,
+                  819.0,
+                  3213.0
+                ],
+                "page_number": 92,
+                "text": "MC:1 M1M11N:FD.CON 139"
+              },
+              {
+                "bbox": [
+                  1980.0,
+                  3179.0,
+                  2175.0,
+                  3221.0
+                ],
+                "page_number": 92,
+                "text": "21-JU 1. 81"
+              },
+              {
+                "bbox": [
+                  396.0,
+                  267.0,
+                  799.0,
+                  320.0
+                ],
+                "page_number": 93,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1305.0,
+                  264.0,
+                  1367.0,
+                  321.0
+                ],
+                "page_number": 93,
+                "text": "81"
+              },
+              {
+                "bbox": [
+                  2087.0,
+                  269.0,
+                  2281.0,
+                  321.0
+                ],
+                "page_number": 93,
+                "text": "Resources"
+              },
+              {
+                "bbox": [
+                  390.0,
+                  3177.0,
+                  906.0,
+                  3217.0
+                ],
+                "page_number": 93,
+                "text": "MC:LMMAN:ID.CON 139"
+              },
+              {
+                "bbox": [
+                  2075.0,
+                  3173.0,
+                  2267.0,
+                  3215.0
+                ],
+                "page_number": 93,
+                "text": "24-JU1 .-81"
+              },
+              {
+                "bbox": [
+                  297.0,
+                  254.0,
+                  501.0,
+                  309.0
+                ],
+                "page_number": 94,
+                "text": "Resources"
+              },
+              {
+                "bbox": [
+                  1216.0,
+                  254.0,
+                  1275.0,
+                  308.0
+                ],
+                "page_number": 94,
+                "text": "82"
+              },
+              {
+                "bbox": [
+                  1787.0,
+                  260.0,
+                  2189.0,
+                  308.0
+                ],
+                "page_number": 94,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  295.0,
+                  3163.0,
+                  800.0,
+                  3200.0
+                ],
+                "page_number": 94,
+                "text": "MC:LMMLAN:RESOUR 14"
+              },
+              {
+                "bbox": [
+                  1973.0,
+                  3165.0,
+                  2168.0,
+                  3210.0
+                ],
+                "page_number": 94,
+                "text": "24-JU1.-81"
+              },
+              {
+                "bbox": [
+                  1288.0,
+                  265.0,
+                  1349.0,
+                  322.0
+                ],
+                "page_number": 95,
+                "text": "83"
+              },
+              {
+                "bbox": [
+                  2072.0,
+                  266.0,
+                  2264.0,
+                  316.0
+                ],
+                "page_number": 95,
+                "text": "Resources"
+              },
+              {
+                "bbox": [
+                  381.0,
+                  273.0,
+                  782.0,
+                  325.0
+                ],
+                "page_number": 95,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  2073.0,
+                  3170.0,
+                  2266.0,
+                  3212.0
+                ],
+                "page_number": 95,
+                "text": "24-JU1 .-81"
+              },
+              {
+                "bbox": [
+                  391.0,
+                  3180.0,
+                  897.0,
+                  3222.0
+                ],
+                "page_number": 95,
+                "text": "MC:1MMAN:RESOUR. 14"
+              },
+              {
+                "bbox": [
+                  311.0,
+                  271.0,
+                  511.0,
+                  322.0
+                ],
+                "page_number": 96,
+                "text": "Resources"
+              },
+              {
+                "bbox": [
+                  1225.0,
+                  273.0,
+                  1285.0,
+                  325.0
+                ],
+                "page_number": 96,
+                "text": "84"
+              },
+              {
+                "bbox": [
+                  1796.0,
+                  280.0,
+                  2194.0,
+                  327.0
+                ],
+                "page_number": 96,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  291.0,
+                  3178.0,
+                  802.0,
+                  3224.0
+                ],
+                "page_number": 96,
+                "text": "MC:I MMAN:RESOUR 14"
+              },
+              {
+                "bbox": [
+                  1972.0,
+                  3188.0,
+                  2170.0,
+                  3238.0
+                ],
+                "page_number": 96,
+                "text": "24-JU1.-81"
+              },
+              {
+                "bbox": [
+                  392.0,
+                  294.0,
+                  795.0,
+                  344.0
+                ],
+                "page_number": 97,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1305.0,
+                  292.0,
+                  1365.0,
+                  345.0
+                ],
+                "page_number": 97,
+                "text": "85"
+              },
+              {
+                "bbox": [
+                  2086.0,
+                  296.0,
+                  2279.0,
+                  347.0
+                ],
+                "page_number": 97,
+                "text": "Resources"
+              },
+              {
+                "bbox": [
+                  388.0,
+                  3224.0,
+                  896.0,
+                  3264.0
+                ],
+                "page_number": 97,
+                "text": "MC:LMMAN:RESOUR 14"
+              },
+              {
+                "bbox": [
+                  2068.0,
+                  3220.0,
+                  2262.0,
+                  3265.0
+                ],
+                "page_number": 97,
+                "text": "24-J1 1.-81"
+              },
+              {
+                "bbox": [
+                  284.0,
+                  284.0,
+                  456.0,
+                  341.0
+                ],
+                "page_number": 98,
+                "text": "Symbols"
+              },
+              {
+                "bbox": [
+                  1198.0,
+                  285.0,
+                  1259.0,
+                  339.0
+                ],
+                "page_number": 98,
+                "text": "86"
+              },
+              {
+                "bbox": [
+                  1768.0,
+                  287.0,
+                  2170.0,
+                  340.0
+                ],
+                "page_number": 98,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  284.0,
+                  3136.0,
+                  776.0,
+                  3173.0
+                ],
+                "page_number": 98,
+                "text": "MC:LMMAN:FD.SYM 70"
+              },
+              {
+                "bbox": [
+                  1962.0,
+                  3137.0,
+                  2159.0,
+                  3182.0
+                ],
+                "page_number": 98,
+                "text": "24-JUI1.-81"
+              },
+              {
+                "bbox": [
+                  385.0,
+                  266.0,
+                  790.0,
+                  322.0
+                ],
+                "page_number": 99,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1298.0,
+                  264.0,
+                  1358.0,
+                  317.0
+                ],
+                "page_number": 99,
+                "text": "87"
+              },
+              {
+                "bbox": [
+                  1936.0,
+                  265.0,
+                  2268.0,
+                  309.0
+                ],
+                "page_number": 99,
+                "text": "The Function Cell"
+              },
+              {
+                "bbox": [
+                  391.0,
+                  3179.0,
+                  886.0,
+                  3219.0
+                ],
+                "page_number": 99,
+                "text": "MC:LMMAN:IT.SYM 70"
+              },
+              {
+                "bbox": [
+                  2075.0,
+                  3171.0,
+                  2270.0,
+                  3213.0
+                ],
+                "page_number": 99,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  296.0,
+                  275.0,
+                  625.0,
+                  330.0
+                ],
+                "page_number": 100,
+                "text": "The Property List"
+              },
+              {
+                "bbox": [
+                  1210.0,
+                  278.0,
+                  1270.0,
+                  332.0
+                ],
+                "page_number": 100,
+                "text": "88"
+              },
+              {
+                "bbox": [
+                  1784.0,
+                  286.0,
+                  2181.0,
+                  334.0
+                ],
+                "page_number": 100,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  280.0,
+                  3186.0,
+                  776.0,
+                  3231.0
+                ],
+                "page_number": 100,
+                "text": "MC:LMMAN:ID.SYM 70"
+              },
+              {
+                "bbox": [
+                  1966.0,
+                  3197.0,
+                  2160.0,
+                  3245.0
+                ],
+                "page_number": 100,
+                "text": "24-JU1.-81"
+              },
+              {
+                "bbox": [
+                  395.0,
+                  291.0,
+                  798.0,
+                  339.0
+                ],
+                "page_number": 101,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1306.0,
+                  289.0,
+                  1366.0,
+                  341.0
+                ],
+                "page_number": 101,
+                "text": "89"
+              },
+              {
+                "bbox": [
+                  1982.0,
+                  292.0,
+                  2280.0,
+                  344.0
+                ],
+                "page_number": 101,
+                "text": "The Print Name"
+              },
+              {
+                "bbox": [
+                  384.0,
+                  3198.0,
+                  880.0,
+                  3241.0
+                ],
+                "page_number": 101,
+                "text": "MC:LMMAN:FD.SYM 70"
+              },
+              {
+                "bbox": [
+                  2068.0,
+                  3199.0,
+                  2263.0,
+                  3246.0
+                ],
+                "page_number": 101,
+                "text": "24-JU1.-81"
+              },
+              {
+                "bbox": [
+                  291.0,
+                  263.0,
+                  623.0,
+                  314.0
+                ],
+                "page_number": 102,
+                "text": "Creating Symbols"
+              },
+              {
+                "bbox": [
+                  1204.0,
+                  259.0,
+                  1265.0,
+                  312.0
+                ],
+                "page_number": 102,
+                "text": "90"
+              },
+              {
+                "bbox": [
+                  1775.0,
+                  259.0,
+                  2175.0,
+                  310.0
+                ],
+                "page_number": 102,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  294.0,
+                  3170.0,
+                  790.0,
+                  3211.0
+                ],
+                "page_number": 102,
+                "text": "MC : MMAN:FDSY M 70"
+              },
+              {
+                "bbox": [
+                  1976.0,
+                  3166.0,
+                  2173.0,
+                  3211.0
+                ],
+                "page_number": 102,
+                "text": "21-JU1.-81"
+              },
+              {
+                "bbox": [
+                  407.0,
+                  260.0,
+                  808.0,
+                  308.0
+                ],
+                "page_number": 103,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1315.0,
+                  255.0,
+                  1377.0,
+                  311.0
+                ],
+                "page_number": 103,
+                "text": "91"
+              },
+              {
+                "bbox": [
+                  1964.0,
+                  258.0,
+                  2292.0,
+                  309.0
+                ],
+                "page_number": 103,
+                "text": "Creating Symbols"
+              },
+              {
+                "bbox": [
+                  406.0,
+                  3177.0,
+                  902.0,
+                  3217.0
+                ],
+                "page_number": 103,
+                "text": "MC:I MMAN:ID.SYM 70"
+              },
+              {
+                "bbox": [
+                  2090.0,
+                  3174.0,
+                  2283.0,
+                  3216.0
+                ],
+                "page_number": 103,
+                "text": "24-JU1 -81"
+              },
+              {
+                "bbox": [
+                  263.0,
+                  269.0,
+                  448.0,
+                  324.0
+                ],
+                "page_number": 104,
+                "text": "Numbers"
+              },
+              {
+                "bbox": [
+                  1177.0,
+                  268.0,
+                  1239.0,
+                  321.0
+                ],
+                "page_number": 104,
+                "text": "92"
+              },
+              {
+                "bbox": [
+                  1748.0,
+                  267.0,
+                  2150.0,
+                  320.0
+                ],
+                "page_number": 104,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  266.0,
+                  3115.0,
+                  772.0,
+                  3152.0
+                ],
+                "page_number": 104,
+                "text": "MC:L MMAN:FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  1947.0,
+                  3111.0,
+                  2143.0,
+                  3153.0
+                ],
+                "page_number": 104,
+                "text": "24-JUII .-81"
+              },
+              {
+                "bbox": [
+                  1283.0,
+                  282.0,
+                  1343.0,
+                  335.0
+                ],
+                "page_number": 105,
+                "text": "93"
+              },
+              {
+                "bbox": [
+                  2078.0,
+                  276.0,
+                  2258.0,
+                  329.0
+                ],
+                "page_number": 105,
+                "text": "Numbers"
+              },
+              {
+                "bbox": [
+                  373.0,
+                  287.0,
+                  773.0,
+                  344.0
+                ],
+                "page_number": 105,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  2073.0,
+                  3177.0,
+                  2264.0,
+                  3218.0
+                ],
+                "page_number": 105,
+                "text": "24-J11.-81"
+              },
+              {
+                "bbox": [
+                  394.0,
+                  3189.0,
+                  895.0,
+                  3230.0
+                ],
+                "page_number": 105,
+                "text": "MC:LMMAN:ID.NUM 77"
+              },
+              {
+                "bbox": [
+                  310.0,
+                  256.0,
+                  673.0,
+                  302.0
+                ],
+                "page_number": 106,
+                "text": "Numeric Predicates"
+              },
+              {
+                "bbox": [
+                  1223.0,
+                  257.0,
+                  1282.0,
+                  309.0
+                ],
+                "page_number": 106,
+                "text": "94"
+              },
+              {
+                "bbox": [
+                  1794.0,
+                  262.0,
+                  2195.0,
+                  310.0
+                ],
+                "page_number": 106,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  296.0,
+                  3160.0,
+                  807.0,
+                  3202.0
+                ],
+                "page_number": 106,
+                "text": "MC:I MMAN:FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  1976.0,
+                  3164.0,
+                  2173.0,
+                  3211.0
+                ],
+                "page_number": 106,
+                "text": "21-JU01.-81"
+              },
+              {
+                "bbox": [
+                  390.0,
+                  264.0,
+                  790.0,
+                  317.0
+                ],
+                "page_number": 107,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1299.0,
+                  259.0,
+                  1360.0,
+                  313.0
+                ],
+                "page_number": 107,
+                "text": "95"
+              },
+              {
+                "bbox": [
+                  1862.0,
+                  261.0,
+                  2273.0,
+                  310.0
+                ],
+                "page_number": 107,
+                "text": "Numeric Comparisons"
+              },
+              {
+                "bbox": [
+                  2075.0,
+                  3158.0,
+                  2271.0,
+                  3206.0
+                ],
+                "page_number": 107,
+                "text": "24-JU1.-81"
+              },
+              {
+                "bbox": [
+                  394.0,
+                  3168.0,
+                  898.0,
+                  3208.0
+                ],
+                "page_number": 107,
+                "text": "MC:IMMAN:FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  286.0,
+                  278.0,
+                  487.0,
+                  324.0
+                ],
+                "page_number": 108,
+                "text": "Arithmetic"
+              },
+              {
+                "bbox": [
+                  1195.0,
+                  275.0,
+                  1259.0,
+                  331.0
+                ],
+                "page_number": 108,
+                "text": "96"
+              },
+              {
+                "bbox": [
+                  1766.0,
+                  279.0,
+                  2169.0,
+                  329.0
+                ],
+                "page_number": 108,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  280.0,
+                  3183.0,
+                  788.0,
+                  3223.0
+                ],
+                "page_number": 108,
+                "text": "MC:L MMAN:FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  1958.0,
+                  3185.0,
+                  2153.0,
+                  3230.0
+                ],
+                "page_number": 108,
+                "text": "24-JU1.-81"
+              },
+              {
+                "bbox": [
+                  391.0,
+                  283.0,
+                  791.0,
+                  333.0
+                ],
+                "page_number": 109,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1299.0,
+                  279.0,
+                  1360.0,
+                  333.0
+                ],
+                "page_number": 109,
+                "text": "97"
+              },
+              {
+                "bbox": [
+                  2073.0,
+                  283.0,
+                  2272.0,
+                  329.0
+                ],
+                "page_number": 109,
+                "text": "Arithmetic"
+              },
+              {
+                "bbox": [
+                  390.0,
+                  3187.0,
+                  896.0,
+                  3231.0
+                ],
+                "page_number": 109,
+                "text": "MC:I.MMAN:ID.NUM 77"
+              },
+              {
+                "bbox": [
+                  2071.0,
+                  3182.0,
+                  2268.0,
+                  3227.0
+                ],
+                "page_number": 109,
+                "text": "24-JU11 -81"
+              },
+              {
+                "bbox": [
+                  297.0,
+                  248.0,
+                  500.0,
+                  293.0
+                ],
+                "page_number": 110,
+                "text": "Arithmetic"
+              },
+              {
+                "bbox": [
+                  1209.0,
+                  246.0,
+                  1270.0,
+                  300.0
+                ],
+                "page_number": 110,
+                "text": "98"
+              },
+              {
+                "bbox": [
+                  1780.0,
+                  252.0,
+                  2178.0,
+                  300.0
+                ],
+                "page_number": 110,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  280.0,
+                  3153.0,
+                  792.0,
+                  3200.0
+                ],
+                "page_number": 110,
+                "text": "MC:LMMAN:FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  1963.0,
+                  3164.0,
+                  2160.0,
+                  3209.0
+                ],
+                "page_number": 110,
+                "text": "24-JU1.-81"
+              }
+            ]
+          }
+        },
+        "provisional": {
+          "eligibility": "exploratory-only",
+          "label": "fresh-source-disagrees-with-stored-final-manifest-text",
+          "metrics": {
+            "case": {
+              "accuracy": 1.0,
+              "correct": 0,
+              "deletions": 0,
+              "error_rate": 0.0,
+              "errors": 0,
+              "insertions": 0,
+              "reference_units": 0,
+              "substitutions": 0
+            },
+            "cer": {
+              "accuracy": 1.0,
+              "correct": 0,
+              "deletions": 0,
+              "error_rate": 0.0,
+              "errors": 0,
+              "insertions": 0,
+              "reference_units": 0,
+              "substitutions": 0
+            },
+            "code_tokens": {
+              "accuracy": 1.0,
+              "exact_tokens": 0,
+              "extra_tokens": 0,
+              "omitted_tokens": 0,
+              "reference_tokens": 0
+            },
+            "omissions": {
+              "extra_region_ids": [],
+              "matched_regions": 0,
+              "omitted_characters": 0,
+              "omitted_region_ids": [],
+              "required_regions": 0,
+              "silently_omitted_regions": 0
+            },
+            "punctuation": {
+              "accuracy": 1.0,
+              "correct": 0,
+              "deletions": 0,
+              "error_rate": 0.0,
+              "errors": 0,
+              "insertions": 0,
+              "reference_units": 0,
+              "substitutions": 0
+            },
+            "wer": {
+              "accuracy": 1.0,
+              "correct": 0,
+              "deletions": 0,
+              "error_rate": 0.0,
+              "errors": 0,
+              "insertions": 0,
+              "reference_units": 0,
+              "substitutions": 0
+            }
+          },
+          "normalization": "collapse Unicode whitespace for prose; preserve code newlines and tokens",
+          "pages": 0,
+          "spatial": {
+            "content_regions": 0,
+            "layout_quality_claim": false,
+            "matched_regions": 0,
+            "nonempty_region_assignment_rate": 1.0,
+            "raw_lines": 0,
+            "unassigned_lines": []
+          }
+        }
+      }
+    },
+    "surya": {
+      "engine": "surya",
+      "strata": {
+        "authoritative": {
+          "eligibility": "metric-eligible",
+          "label": "fresh-source-semantic-with-exact-or-receipted-r33-physical-text",
+          "metrics": {
+            "case": {
+              "accuracy": 0.9994503481128618,
+              "correct": 32730,
+              "deletions": 6,
+              "error_rate": 0.0011298399902284109,
+              "errors": 37,
+              "insertions": 19,
+              "reference_units": 32748,
+              "substitutions": 12
+            },
+            "cer": {
+              "accuracy": 0.9983660904570211,
+              "correct": 42161,
+              "deletions": 33,
+              "error_rate": 0.01008761543926119,
+              "errors": 426,
+              "insertions": 357,
+              "reference_units": 42230,
+              "substitutions": 36
+            },
+            "code_tokens": {
+              "accuracy": 0.9205128205128205,
+              "exact_tokens": 359,
+              "extra_tokens": 1,
+              "omitted_tokens": 1,
+              "reference_tokens": 390
+            },
+            "omissions": {
+              "extra_region_ids": [],
+              "matched_regions": 269,
+              "omitted_characters": 0,
+              "omitted_region_ids": [],
+              "required_regions": 269,
+              "silently_omitted_regions": 0
+            },
+            "punctuation": {
+              "accuracy": 0.9953596287703016,
+              "correct": 1716,
+              "deletions": 1,
+              "error_rate": 0.013921113689095127,
+              "errors": 24,
+              "insertions": 16,
+              "reference_units": 1724,
+              "substitutions": 7
+            },
+            "wer": {
+              "accuracy": 0.9957817390121105,
+              "correct": 7318,
+              "deletions": 12,
+              "error_rate": 0.005442917403728398,
+              "errors": 40,
+              "insertions": 9,
+              "reference_units": 7349,
+              "substitutions": 19
+            }
+          },
+          "normalization": "collapse Unicode whitespace for prose; preserve code newlines and tokens",
+          "pages": 20,
+          "spatial": {
+            "content_regions": 269,
+            "layout_quality_claim": false,
+            "matched_regions": 269,
+            "nonempty_region_assignment_rate": 1.0,
+            "raw_lines": 369,
+            "unassigned_lines": [
+              {
+                "bbox": [
+                  382.5,
+                  277.20000000000005,
+                  793.05,
+                  330.0
+                ],
+                "page_number": 91,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1297.95,
+                  277.20000000000005,
+                  1359.15,
+                  323.40000000000003
+                ],
+                "page_number": 91,
+                "text": "79"
+              },
+              {
+                "bbox": [
+                  2121.6,
+                  273.90000000000003,
+                  2282.25,
+                  323.40000000000003
+                ],
+                "page_number": 91,
+                "text": "Sorting"
+              },
+              {
+                "bbox": [
+                  382.5,
+                  3168.0,
+                  912.9,
+                  3220.7999999999997
+                ],
+                "page_number": 91,
+                "text": "MCHMMAN:ED.CON 139"
+              },
+              {
+                "bbox": [
+                  2060.4,
+                  3168.0,
+                  2277.15,
+                  3217.5
+                ],
+                "page_number": 91,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  306.0,
+                  264.0,
+                  456.45,
+                  316.8
+                ],
+                "page_number": 92,
+                "text": "Sorting"
+              },
+              {
+                "bbox": [
+                  1216.35,
+                  264.0,
+                  1280.1,
+                  313.5
+                ],
+                "page_number": 92,
+                "text": "80"
+              },
+              {
+                "bbox": [
+                  1774.8,
+                  264.0,
+                  2200.65,
+                  320.1
+                ],
+                "page_number": 92,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  290.7,
+                  3158.1,
+                  821.1,
+                  3210.9
+                ],
+                "page_number": 92,
+                "text": "MCH MAINED.CON 139"
+              },
+              {
+                "bbox": [
+                  1960.95,
+                  3158.1,
+                  2182.8,
+                  3217.5
+                ],
+                "page_number": 92,
+                "text": "24-JUL 81"
+              },
+              {
+                "bbox": [
+                  390.15,
+                  264.0,
+                  800.7,
+                  316.8
+                ],
+                "page_number": 93,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1303.05,
+                  264.0,
+                  1361.7,
+                  313.5
+                ],
+                "page_number": 93,
+                "text": "81"
+              },
+              {
+                "bbox": [
+                  2073.1499999999996,
+                  264.0,
+                  2287.35,
+                  313.5
+                ],
+                "page_number": 93,
+                "text": "Resources"
+              },
+              {
+                "bbox": [
+                  379.95,
+                  3164.7,
+                  907.8,
+                  3214.2
+                ],
+                "page_number": 93,
+                "text": "MCILMAN:ED.CON 139"
+              },
+              {
+                "bbox": [
+                  2057.85,
+                  3164.7,
+                  2274.6,
+                  3210.9
+                ],
+                "page_number": 93,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  290.7,
+                  250.79999999999998,
+                  499.8,
+                  303.6
+                ],
+                "page_number": 94,
+                "text": "Resources"
+              },
+              {
+                "bbox": [
+                  1211.25,
+                  250.79999999999998,
+                  1275.0,
+                  303.6
+                ],
+                "page_number": 94,
+                "text": "82"
+              },
+              {
+                "bbox": [
+                  1764.6,
+                  250.79999999999998,
+                  2198.1,
+                  306.9
+                ],
+                "page_number": 94,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  280.5,
+                  3141.6,
+                  803.25,
+                  3197.7
+                ],
+                "page_number": 94,
+                "text": "MCELMAN:RESOUR 14"
+              },
+              {
+                "bbox": [
+                  1953.3,
+                  3141.6,
+                  2175.15,
+                  3204.2999999999997
+                ],
+                "page_number": 94,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  369.75,
+                  267.3,
+                  782.85,
+                  323.40000000000003
+                ],
+                "page_number": 95,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1282.65,
+                  267.3,
+                  1343.8500000000001,
+                  313.5
+                ],
+                "page_number": 95,
+                "text": "83"
+              },
+              {
+                "bbox": [
+                  2057.85,
+                  260.7,
+                  2266.95,
+                  310.2
+                ],
+                "page_number": 95,
+                "text": "Resources"
+              },
+              {
+                "bbox": [
+                  377.4,
+                  3164.7,
+                  900.15,
+                  3217.5
+                ],
+                "page_number": 95,
+                "text": "MC:LMMAN:RESOUR 14"
+              },
+              {
+                "bbox": [
+                  2057.85,
+                  3154.7999999999997,
+                  2269.5,
+                  3207.6
+                ],
+                "page_number": 95,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  306.0,
+                  267.3,
+                  510.0,
+                  316.8
+                ],
+                "page_number": 96,
+                "text": "Resources"
+              },
+              {
+                "bbox": [
+                  1221.45,
+                  270.6,
+                  1280.1,
+                  320.1
+                ],
+                "page_number": 96,
+                "text": "84\n"
+              },
+              {
+                "bbox": [
+                  1777.35,
+                  270.6,
+                  2200.65,
+                  326.7
+                ],
+                "page_number": 96,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  277.95,
+                  3164.7,
+                  803.25,
+                  3220.7999999999997
+                ],
+                "page_number": 96,
+                "text": "MC:I MMAN;RESOUR 14\n"
+              },
+              {
+                "bbox": [
+                  1955.8500000000001,
+                  3174.6,
+                  2172.6,
+                  3230.7
+                ],
+                "page_number": 96,
+                "text": "24-JUL-81\n"
+              },
+              {
+                "bbox": [
+                  379.95,
+                  290.4,
+                  800.7,
+                  353.09999999999997
+                ],
+                "page_number": 97,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1295.4,
+                  290.4,
+                  1364.25,
+                  346.5
+                ],
+                "page_number": 97,
+                "text": "85"
+              },
+              {
+                "bbox": [
+                  2073.1499999999996,
+                  290.4,
+                  2297.55,
+                  346.5
+                ],
+                "page_number": 97,
+                "text": "Resources"
+              },
+              {
+                "bbox": [
+                  374.84999999999997,
+                  3204.2999999999997,
+                  900.15,
+                  3267.0
+                ],
+                "page_number": 97,
+                "text": "MCIMMAN:RESOUR 14"
+              },
+              {
+                "bbox": [
+                  2052.75,
+                  3204.2999999999997,
+                  2279.7,
+                  3263.7
+                ],
+                "page_number": 97,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  277.95,
+                  280.5,
+                  453.9,
+                  336.59999999999997
+                ],
+                "page_number": 98,
+                "text": "Symbols"
+              },
+              {
+                "bbox": [
+                  1193.4,
+                  280.5,
+                  1257.15,
+                  333.3
+                ],
+                "page_number": 98,
+                "text": "86"
+              },
+              {
+                "bbox": [
+                  1751.8500000000001,
+                  280.5,
+                  2175.15,
+                  336.59999999999997
+                ],
+                "page_number": 98,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  267.75,
+                  3115.2,
+                  780.3,
+                  3174.6
+                ],
+                "page_number": 98,
+                "text": "MC:LMMAN;FD,SYM 70"
+              },
+              {
+                "bbox": [
+                  1940.55,
+                  3115.2,
+                  2162.4,
+                  3174.6
+                ],
+                "page_number": 98,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  377.4,
+                  264.0,
+                  790.5,
+                  320.1
+                ],
+                "page_number": 99,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1292.85,
+                  264.0,
+                  1351.5,
+                  313.5
+                ],
+                "page_number": 99,
+                "text": "87"
+              },
+              {
+                "bbox": [
+                  1917.6,
+                  257.4,
+                  2277.15,
+                  310.2
+                ],
+                "page_number": 99,
+                "text": "The Function Cell"
+              },
+              {
+                "bbox": [
+                  377.4,
+                  3161.4,
+                  889.9499999999999,
+                  3214.2
+                ],
+                "page_number": 99,
+                "text": "MC:LMMAN:FD.SYM 70"
+              },
+              {
+                "bbox": [
+                  2057.85,
+                  3154.7999999999997,
+                  2277.15,
+                  3210.9
+                ],
+                "page_number": 99,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  288.15000000000003,
+                  270.6,
+                  627.3,
+                  326.7
+                ],
+                "page_number": 100,
+                "text": "The Property List"
+              },
+              {
+                "bbox": [
+                  1208.7,
+                  277.20000000000005,
+                  1267.35,
+                  326.7
+                ],
+                "page_number": 100,
+                "text": "88"
+              },
+              {
+                "bbox": [
+                  1764.6,
+                  277.20000000000005,
+                  2187.9,
+                  333.3
+                ],
+                "page_number": 100,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  267.75,
+                  3171.2999999999997,
+                  780.3,
+                  3227.4
+                ],
+                "page_number": 100,
+                "text": "MCLINMAN:ED.SYM 70"
+              },
+              {
+                "bbox": [
+                  1948.2,
+                  3184.5,
+                  2162.4,
+                  3237.2999999999997
+                ],
+                "page_number": 100,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  385.05,
+                  283.79999999999995,
+                  798.15,
+                  339.9
+                ],
+                "page_number": 101,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1300.5,
+                  283.79999999999995,
+                  1361.7,
+                  336.59999999999997
+                ],
+                "page_number": 101,
+                "text": "89"
+              },
+              {
+                "bbox": [
+                  1963.5,
+                  283.79999999999995,
+                  2287.35,
+                  339.9
+                ],
+                "page_number": 101,
+                "text": "The Print Name"
+              },
+              {
+                "bbox": [
+                  374.84999999999997,
+                  3181.2,
+                  882.3,
+                  3237.2999999999997
+                ],
+                "page_number": 101,
+                "text": "MCLINMAN:ED.SYM 70"
+              },
+              {
+                "bbox": [
+                  2050.2000000000003,
+                  3181.2,
+                  2269.5,
+                  3240.6
+                ],
+                "page_number": 101,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  283.05,
+                  257.4,
+                  624.75,
+                  313.5
+                ],
+                "page_number": 102,
+                "text": "Creating Symbols"
+              },
+              {
+                "bbox": [
+                  1201.05,
+                  257.4,
+                  1262.25,
+                  306.9
+                ],
+                "page_number": 102,
+                "text": "90"
+              },
+              {
+                "bbox": [
+                  1756.9499999999998,
+                  254.1,
+                  2177.7,
+                  306.9
+                ],
+                "page_number": 102,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  283.05,
+                  3154.7999999999997,
+                  793.05,
+                  3207.6
+                ],
+                "page_number": 102,
+                "text": "MC : I NIMAN:ED.SYM 70"
+              },
+              {
+                "bbox": [
+                  1960.95,
+                  3154.7999999999997,
+                  2175.15,
+                  3204.2999999999997
+                ],
+                "page_number": 102,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  395.25,
+                  254.1,
+                  810.9,
+                  310.2
+                ],
+                "page_number": 103,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1308.15,
+                  254.1,
+                  1371.9,
+                  306.9
+                ],
+                "page_number": 103,
+                "text": "91"
+              },
+              {
+                "bbox": [
+                  1948.2,
+                  254.1,
+                  2310.3,
+                  310.2
+                ],
+                "page_number": 103,
+                "text": "Creating Symbols"
+              },
+              {
+                "bbox": [
+                  395.25,
+                  3154.7999999999997,
+                  905.25,
+                  3214.2
+                ],
+                "page_number": 103,
+                "text": "MCE MMAN:FDSYM 70"
+              },
+              {
+                "bbox": [
+                  2070.6000000000004,
+                  3154.7999999999997,
+                  2297.55,
+                  3214.2
+                ],
+                "page_number": 103,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  260.09999999999997,
+                  267.3,
+                  446.25,
+                  316.8
+                ],
+                "page_number": 104,
+                "text": "Numbers"
+              },
+              {
+                "bbox": [
+                  1175.55,
+                  267.3,
+                  1234.2,
+                  313.5
+                ],
+                "page_number": 104,
+                "text": "92"
+              },
+              {
+                "bbox": [
+                  1734.0000000000002,
+                  267.3,
+                  2149.65,
+                  316.8
+                ],
+                "page_number": 104,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  260.09999999999997,
+                  3095.3999999999996,
+                  775.1999999999999,
+                  3151.5
+                ],
+                "page_number": 104,
+                "text": "MC:LMMAN;FD,NUM 77"
+              },
+              {
+                "bbox": [
+                  1930.35,
+                  3095.3999999999996,
+                  2142.0,
+                  3151.5
+                ],
+                "page_number": 104,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  367.2,
+                  287.09999999999997,
+                  772.65,
+                  343.2
+                ],
+                "page_number": 105,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1277.55,
+                  283.79999999999995,
+                  1338.75,
+                  333.3
+                ],
+                "page_number": 105,
+                "text": "93"
+              },
+              {
+                "bbox": [
+                  2065.5,
+                  277.20000000000005,
+                  2266.95,
+                  326.7
+                ],
+                "page_number": 105,
+                "text": "Numbers"
+              },
+              {
+                "bbox": [
+                  379.95,
+                  3171.2999999999997,
+                  900.15,
+                  3227.4
+                ],
+                "page_number": 105,
+                "text": "MCHMMAN;FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  2055.3,
+                  3158.1,
+                  2274.6,
+                  3214.2
+                ],
+                "page_number": 105,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  300.9,
+                  250.79999999999998,
+                  673.2,
+                  303.6
+                ],
+                "page_number": 106,
+                "text": "Numeric Predicates"
+              },
+              {
+                "bbox": [
+                  1218.8999999999999,
+                  254.1,
+                  1280.1,
+                  303.6
+                ],
+                "page_number": 106,
+                "text": "94"
+              },
+              {
+                "bbox": [
+                  1774.8,
+                  254.1,
+                  2200.65,
+                  310.2
+                ],
+                "page_number": 106,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  285.6,
+                  3144.8999999999996,
+                  808.35,
+                  3197.7
+                ],
+                "page_number": 106,
+                "text": "MCH MMAN:FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  1960.95,
+                  3151.5,
+                  2175.15,
+                  3204.2999999999997
+                ],
+                "page_number": 106,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  382.5,
+                  264.0,
+                  790.5,
+                  320.1
+                ],
+                "page_number": 107,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1292.85,
+                  264.0,
+                  1354.0500000000002,
+                  313.5
+                ],
+                "page_number": 107,
+                "text": "95"
+              },
+              {
+                "bbox": [
+                  1843.6499999999999,
+                  264.0,
+                  2292.4500000000003,
+                  313.5
+                ],
+                "page_number": 107,
+                "text": "Numeric Comparisons"
+              },
+              {
+                "bbox": [
+                  382.5,
+                  3151.5,
+                  900.15,
+                  3207.6
+                ],
+                "page_number": 107,
+                "text": "MC:LMMAN:FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  2060.4,
+                  3144.8999999999996,
+                  2287.35,
+                  3201.0
+                ],
+                "page_number": 107,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  275.4,
+                  273.90000000000003,
+                  487.05,
+                  323.40000000000003
+                ],
+                "page_number": 108,
+                "text": "Arithmetic"
+              },
+              {
+                "bbox": [
+                  1193.4,
+                  273.90000000000003,
+                  1257.15,
+                  323.40000000000003
+                ],
+                "page_number": 108,
+                "text": "96"
+              },
+              {
+                "bbox": [
+                  1751.8500000000001,
+                  273.90000000000003,
+                  2172.6,
+                  326.7
+                ],
+                "page_number": 108,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  267.75,
+                  3168.0,
+                  790.5,
+                  3220.7999999999997
+                ],
+                "page_number": 108,
+                "text": "MCCLIMMAN;FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  1940.55,
+                  3168.0,
+                  2157.2999999999997,
+                  3224.1
+                ],
+                "page_number": 108,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  382.5,
+                  277.20000000000005,
+                  793.05,
+                  333.3
+                ],
+                "page_number": 109,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  1295.4,
+                  277.20000000000005,
+                  1356.6000000000001,
+                  326.7
+                ],
+                "page_number": 109,
+                "text": "97"
+              },
+              {
+                "bbox": [
+                  2057.85,
+                  277.20000000000005,
+                  2274.6,
+                  326.7
+                ],
+                "page_number": 109,
+                "text": "Arithmetic"
+              },
+              {
+                "bbox": [
+                  382.5,
+                  3174.6,
+                  897.5999999999999,
+                  3227.4
+                ],
+                "page_number": 109,
+                "text": "MC:LMMAN;FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  2055.3,
+                  3168.0,
+                  2269.5,
+                  3220.7999999999997
+                ],
+                "page_number": 109,
+                "text": "24-JUL-81"
+              },
+              {
+                "bbox": [
+                  288.15000000000003,
+                  244.2,
+                  502.35,
+                  293.7
+                ],
+                "page_number": 110,
+                "text": "Arithmetic"
+              },
+              {
+                "bbox": [
+                  1206.1499999999999,
+                  244.2,
+                  1267.35,
+                  293.7
+                ],
+                "page_number": 110,
+                "text": "98"
+              },
+              {
+                "bbox": [
+                  1759.4999999999998,
+                  244.2,
+                  2185.35,
+                  300.3
+                ],
+                "page_number": 110,
+                "text": "Lisp Machine Manual"
+              },
+              {
+                "bbox": [
+                  270.3,
+                  3141.6,
+                  793.05,
+                  3194.4
+                ],
+                "page_number": 110,
+                "text": "MC:LMMAN:FD.NUM 77"
+              },
+              {
+                "bbox": [
+                  1943.1000000000001,
+                  3151.5,
+                  2162.4,
+                  3204.2999999999997
+                ],
+                "page_number": 110,
+                "text": "24-JUL-81"
+              }
+            ]
+          }
+        },
+        "provisional": {
+          "eligibility": "exploratory-only",
+          "label": "fresh-source-disagrees-with-stored-final-manifest-text",
+          "metrics": {
+            "case": {
+              "accuracy": 1.0,
+              "correct": 0,
+              "deletions": 0,
+              "error_rate": 0.0,
+              "errors": 0,
+              "insertions": 0,
+              "reference_units": 0,
+              "substitutions": 0
+            },
+            "cer": {
+              "accuracy": 1.0,
+              "correct": 0,
+              "deletions": 0,
+              "error_rate": 0.0,
+              "errors": 0,
+              "insertions": 0,
+              "reference_units": 0,
+              "substitutions": 0
+            },
+            "code_tokens": {
+              "accuracy": 1.0,
+              "exact_tokens": 0,
+              "extra_tokens": 0,
+              "omitted_tokens": 0,
+              "reference_tokens": 0
+            },
+            "omissions": {
+              "extra_region_ids": [],
+              "matched_regions": 0,
+              "omitted_characters": 0,
+              "omitted_region_ids": [],
+              "required_regions": 0,
+              "silently_omitted_regions": 0
+            },
+            "punctuation": {
+              "accuracy": 1.0,
+              "correct": 0,
+              "deletions": 0,
+              "error_rate": 0.0,
+              "errors": 0,
+              "insertions": 0,
+              "reference_units": 0,
+              "substitutions": 0
+            },
+            "wer": {
+              "accuracy": 1.0,
+              "correct": 0,
+              "deletions": 0,
+              "error_rate": 0.0,
+              "errors": 0,
+              "insertions": 0,
+              "reference_units": 0,
+              "substitutions": 0
+            }
+          },
+          "normalization": "collapse Unicode whitespace for prose; preserve code newlines and tokens",
+          "pages": 0,
+          "spatial": {
+            "content_regions": 0,
+            "layout_quality_claim": false,
+            "matched_regions": 0,
+            "nonempty_region_assignment_rate": 1.0,
+            "raw_lines": 0,
+            "unassigned_lines": []
+          }
+        }
+      }
+    }
+  },
+  "format_version": "lispmdoc-chinual-r5-evaluation-1",
+  "inputs": {
+    "plan_sha256": "52d6fd8bd3f6254987107d9c21c8813d5f8a35fc5ea626999fed65d19ec82fec",
+    "r33_manifest_sha256": "3e68b9dd0c0f1f6d2609ff66fc7cde15c73d711918fcf861c6d3269f96ec64c3",
+    "raw_digests": {
+      "paddleocr/raw/p000091.json": "b23e8d53e5721be4f7280b7c682e85b3402a6a016eb4b60f6678b9a4f8afb4ea",
+      "paddleocr/raw/p000092.json": "f3ab1b011557d16f5e3dd6b517496c936c5650814b86f0aa94dcd51c4b710528",
+      "paddleocr/raw/p000093.json": "defcaaf811986ff1af3fb7a7f9b87ef86f3d523ffc877e4697cfd34c98f65593",
+      "paddleocr/raw/p000094.json": "5a9e050b1c0b5ed1c9464701a108ce9aca0c4bcb71434406c1b87f6a6b701dab",
+      "paddleocr/raw/p000095.json": "87bbb02dd0140d3416cbefbc473050ce3ef4faf17b53d927d285c39b04a4db31",
+      "paddleocr/raw/p000096.json": "e85828340ec2df7f11fc5577884a3e976b8cb8ba6449bfdb44dfd71f9c0b52b5",
+      "paddleocr/raw/p000097.json": "da5a12de23cedcc55fdfe8de30620d0a4476c3bb85cf5197c41ad8b64e6f6113",
+      "paddleocr/raw/p000098.json": "3e9b2cee5ab463f8b826c4f999273a7f577f3eb97231517648bc582c249312bb",
+      "paddleocr/raw/p000099.json": "00b730e9246bc532ecd460fb9aed2eb4991c56bca91669979561f98f73d4a52b",
+      "paddleocr/raw/p000100.json": "a92ff6d29ed11d8aaa2a6ee48db72d6517bf022b39dec05d2950bcad591ec186",
+      "paddleocr/raw/p000101.json": "4956c61bb03941c952eebc151901fcf5c860a1d1b1a71deaab8fcc901173a005",
+      "paddleocr/raw/p000102.json": "7bc2a2ae1e4ca5821c6bc1194a922d506edf54c5146ac78c8f45397b39048784",
+      "paddleocr/raw/p000103.json": "040fb193b7aa184b7ef5aa2fa6264ecca9f560d82e7094054c5a1f1f22f4ea7c",
+      "paddleocr/raw/p000104.json": "c14fe7079b98741f3fe88cf9c5f9f35e8fdde38d41261ea48c2569104bb1fca5",
+      "paddleocr/raw/p000105.json": "8ae282afb7348c8085134c38807dcdc913d871a6fe2cc127a8a8dff9d3de07b0",
+      "paddleocr/raw/p000106.json": "3f591a1da559e2b1305f042efd1a725e1733b179700ad971152113a363ace32f",
+      "paddleocr/raw/p000107.json": "58273eff950ae0a07cfa5782be0c7706ae6a9f74b1289cb63e5bb57c57c06331",
+      "paddleocr/raw/p000108.json": "4bf0083dc089819b92a21b5df9e8e302bc3ae084cacf215d63203319c8bcb5e9",
+      "paddleocr/raw/p000109.json": "7e7b44b0681aaa2650858d0855ae125ff513e785fa2b0cc46dec8c5973f2a552",
+      "paddleocr/raw/p000110.json": "80c26a937ef1ec516bc07b3d8ccb30760a17ad81251a23b64853c9eba5cfaf89",
+      "surya/raw/inputs/results.json": "304f773e8ade000e7e56701bc993400fef3f595a048d119573d2acf3fad0c6a0"
+    },
+    "receipt": {
+      "path": "config/benchmarks/chinual-r5-receipt.json",
+      "sha256": "90138285f67a94e9839dc64fded34fab395f139cdd5d9bdbbd7158df7208e109"
+    },
+    "run_root": "work/chinual-slice/ocr-rerun-r5",
+    "section_counter": {
+      "applied_proofs": [
+        {
+          "chapter_anchor_name": "cons-chapter",
+          "chapter_anchor_value": "5",
+          "directive": "section",
+          "line": 1846,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "5.10",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_con.141",
+          "source_sha256": "ca184a7100de3d73f2ce3fae331c11c82477bbcdc89b502315b0bde42735e91d",
+          "title": "Sorting"
+        },
+        {
+          "chapter_anchor_name": "cons-chapter",
+          "chapter_anchor_value": "5",
+          "directive": "section",
+          "line": 3,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "5.11",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "resour.15",
+          "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+          "title": "Resources"
+        },
+        {
+          "chapter_anchor_name": "symbol-chapter",
+          "chapter_anchor_value": "6",
+          "directive": "chapter",
+          "line": 4,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "6.",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_sym.70",
+          "source_sha256": "36352edeacc7213bbcf9037e4cadad7c068066b352d130450f2e7986b1a4216e",
+          "title": "Symbols"
+        },
+        {
+          "chapter_anchor_name": "symbol-chapter",
+          "chapter_anchor_value": "6",
+          "directive": "section",
+          "line": 8,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "6.1",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_sym.70",
+          "source_sha256": "36352edeacc7213bbcf9037e4cadad7c068066b352d130450f2e7986b1a4216e",
+          "title": "The Value Cell"
+        },
+        {
+          "chapter_anchor_name": "symbol-chapter",
+          "chapter_anchor_value": "6",
+          "directive": "section",
+          "line": 85,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "6.2",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_sym.70",
+          "source_sha256": "36352edeacc7213bbcf9037e4cadad7c068066b352d130450f2e7986b1a4216e",
+          "title": "The Function Cell"
+        },
+        {
+          "chapter_anchor_name": "symbol-chapter",
+          "chapter_anchor_value": "6",
+          "directive": "section",
+          "line": 182,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "6.4",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_sym.70",
+          "source_sha256": "36352edeacc7213bbcf9037e4cadad7c068066b352d130450f2e7986b1a4216e",
+          "title": "The Print Name"
+        },
+        {
+          "chapter_anchor_name": "symbol-chapter",
+          "chapter_anchor_value": "6",
+          "directive": "section",
+          "line": 223,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "6.5",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_sym.70",
+          "source_sha256": "36352edeacc7213bbcf9037e4cadad7c068066b352d130450f2e7986b1a4216e",
+          "title": "The Package Cell"
+        },
+        {
+          "chapter_anchor_name": "symbol-chapter",
+          "chapter_anchor_value": "6",
+          "directive": "section",
+          "line": 231,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "6.6",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_sym.70",
+          "source_sha256": "36352edeacc7213bbcf9037e4cadad7c068066b352d130450f2e7986b1a4216e",
+          "title": "Creating Symbols"
+        },
+        {
+          "chapter_anchor_name": "number-chapter",
+          "chapter_anchor_value": "7",
+          "directive": "chapter",
+          "line": 7,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "7.",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_num.77",
+          "source_sha256": "4034697aad093031421ccb2ad80e95b4fece06bf27fe374c949b7998074e92a3",
+          "title": "Numbers"
+        },
+        {
+          "chapter_anchor_name": "number-chapter",
+          "chapter_anchor_value": "7",
+          "directive": "section",
+          "line": 163,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "7.1",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_num.77",
+          "source_sha256": "4034697aad093031421ccb2ad80e95b4fece06bf27fe374c949b7998074e92a3",
+          "title": "Numeric Predicates"
+        },
+        {
+          "chapter_anchor_name": "number-chapter",
+          "chapter_anchor_value": "7",
+          "directive": "section",
+          "line": 227,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "7.2",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_num.77",
+          "source_sha256": "4034697aad093031421ccb2ad80e95b4fece06bf27fe374c949b7998074e92a3",
+          "title": "Numeric Comparisons"
+        },
+        {
+          "chapter_anchor_name": "number-chapter",
+          "chapter_anchor_value": "7",
+          "directive": "section",
+          "line": 303,
+          "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+          "number": "7.3",
+          "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+          "source_path": "fd_num.77",
+          "source_sha256": "4034697aad093031421ccb2ad80e95b4fece06bf27fe374c949b7998074e92a3",
+          "title": "Arithmetic"
+        }
+      ],
+      "manual_vars_sha256": "020d38f5d3b990444768c20adb36cc676188057f3faee23a8030fb7dbad4c4ba",
+      "order_sha256": "7d1700f036ee2b4a644e33862da57bfb10acb405e625265da6381e0c42a06d30",
+      "receipt_sha256": "315d60d405156caaff7f801ee661fb34f4b0d908a3650bf24d808870ea5235c4",
+      "ti_script_sha256": "ac8520999176aeed57bd5ce83017f5077f2403970dcc139193cc1cef96c139b3"
+    },
+    "source_selector_overlay": {
+      "applied_selectors": [
+        {
+          "end_line": 21,
+          "page_number": 93,
+          "region_id": "block-015",
+          "region_kind": "body",
+          "selected_text_sha256": "e5cd3cb4f47b6a005809c0e9dc98d10e7a3831ecdb050c285362fa783c22f3d3",
+          "selector": {
+            "end": 378,
+            "kind": "rendered-character-range",
+            "start": 0
+          },
+          "source_path": "resour.15",
+          "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+          "start_line": 16
+        },
+        {
+          "end_line": 24,
+          "page_number": 94,
+          "region_id": "block-001",
+          "region_kind": "body",
+          "selected_text_sha256": "d8673313dfeb2f4914a074178971f2c04316e865a7422b0bbaebda29098d740a",
+          "selector": {
+            "end": 216,
+            "kind": "rendered-character-range",
+            "start": 25
+          },
+          "source_path": "resour.15",
+          "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+          "start_line": 21
+        },
+        {
+          "end_line": 57,
+          "page_number": 94,
+          "region_id": "block-006",
+          "region_kind": "body",
+          "selected_text_sha256": "a56cbda5455d714a1772225aea2851c9f4136727ddc9c7d7cf4ad2423339dc28",
+          "selector": {
+            "component": "role",
+            "directive": "defspec",
+            "kind": "directive-component"
+          },
+          "source_path": "resour.15",
+          "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+          "start_line": 57
+        },
+        {
+          "end_line": 85,
+          "page_number": 94,
+          "region_id": "block-012",
+          "region_kind": "body",
+          "selected_text_sha256": "fcd245f516d9615378c4e01e5b96fa87be38d861ec8800f867ab6a7e9e4cf611",
+          "selector": {
+            "component": "label-and-following-prose-character-range",
+            "directive": "kitem",
+            "end": 368,
+            "kind": "directive-component",
+            "start": 0
+          },
+          "source_path": "resour.15",
+          "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+          "start_line": 79
+        },
+        {
+          "end_line": 86,
+          "page_number": 95,
+          "region_id": "block-001",
+          "region_kind": "body",
+          "selected_text_sha256": "a952b841ccc69b321defb9fa34d559eb65cd486cfd78f344fc68ca0f164e8e2a",
+          "selector": {
+            "end": 132,
+            "kind": "rendered-character-range",
+            "start": 17
+          },
+          "source_path": "resour.15",
+          "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+          "start_line": 85
+        },
+        {
+          "end_line": 191,
+          "page_number": 96,
+          "region_id": "block-018",
+          "region_kind": "function",
+          "selected_text_sha256": "213f81c2f596bb9a4e43bee247b9aea09c1a2d5c32e85d7f4d3fc1d5702d2129",
+          "selector": {
+            "component": "token-range",
+            "directive": "defspec",
+            "end": 2,
+            "kind": "directive-component",
+            "start": 0
+          },
+          "source_path": "resour.15",
+          "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+          "start_line": 191
+        },
+        {
+          "end_line": 191,
+          "page_number": 96,
+          "region_id": "block-019",
+          "region_kind": "function",
+          "selected_text_sha256": "62a5b1ff8ee5693d70860a344c500ef68ac0693a842fe2896046ada017f233da",
+          "selector": {
+            "component": "token-range",
+            "directive": "defspec",
+            "end": 3,
+            "kind": "directive-component",
+            "start": 2
+          },
+          "source_path": "resour.15",
+          "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+          "start_line": 191
+        },
+        {
+          "end_line": 191,
+          "page_number": 96,
+          "region_id": "block-020",
+          "region_kind": "body",
+          "selected_text_sha256": "a56cbda5455d714a1772225aea2851c9f4136727ddc9c7d7cf4ad2423339dc28",
+          "selector": {
+            "component": "role",
+            "directive": "defspec",
+            "kind": "directive-component"
+          },
+          "source_path": "resour.15",
+          "source_sha256": "ccd12c56d1460d00c1407ba9ecf42ff75231bd36e7bbec39b99a5b225ed90968",
+          "start_line": 191
+        },
+        {
+          "end_line": 193,
+          "page_number": 106,
+          "region_id": "block-015",
+          "region_kind": "body",
+          "selected_text_sha256": "a56cbda5455d714a1772225aea2851c9f4136727ddc9c7d7cf4ad2423339dc28",
+          "selector": {
+            "component": "role",
+            "directive": "defspec",
+            "kind": "directive-component"
+          },
+          "source_path": "fd_num.77",
+          "source_sha256": "4034697aad093031421ccb2ad80e95b4fece06bf27fe374c949b7998074e92a3",
+          "start_line": 193
+        }
+      ],
+      "sha256": "2cfd49519f6844c7e3cab7fc04f3027af9b746ef655cc76cd40947da1426b85b"
+    },
+    "whitespace_projection_overlay": {
+      "applied_receipts": [
+        {
+          "kind": "body",
+          "page_number": 92,
+          "physical_sha256": "dfba82a6d382c507f302cc5ff362d53b2522ef5a65b0888572fa73566830bfe6",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-006",
+          "semantic_sha256": "e563262fef0d9e2c90888c055a10c097bfd6c52e72b05fb40f1e350209caeee2"
+        },
+        {
+          "kind": "body",
+          "page_number": 95,
+          "physical_sha256": "60e73c25122c9bda2f09d64b681c871ba9530c255010866ac015978ddfef3eb5",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-002",
+          "semantic_sha256": "c30caf83c5e0fbe0e37b3d8cf14c75b449ef65d9f0f6375421a677768849384c"
+        },
+        {
+          "kind": "body",
+          "page_number": 95,
+          "physical_sha256": "722fd3c2813edd81b3a5450a83d92965cce2898277d12666171137b532ce9a0b",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-004",
+          "semantic_sha256": "59b989d71c1644726709656e0989e2b26c48eb8363b1eed072cc45643766f927"
+        },
+        {
+          "kind": "body",
+          "page_number": 95,
+          "physical_sha256": "2d2a27e18ab935187685abe8d14f6db03245c10b2d34fdaed97e7975b28ec45b",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-005",
+          "semantic_sha256": "f8f6b6b0ea5dc2e272141645aa7d287307cb820e747b5e54b76f042ee3c48e62"
+        },
+        {
+          "kind": "body",
+          "page_number": 95,
+          "physical_sha256": "501e373ec77cb8ace8d902c6888969a04ac64d7d6271ae7fc155ebacfbd10f9b",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-006",
+          "semantic_sha256": "019561d0d4d19dcd25ed8a92fb7661fdb6dbc92181562f6d2658765ff6520f06"
+        },
+        {
+          "kind": "code",
+          "page_number": 96,
+          "physical_sha256": "ba5ec51d07a4ac0e951608704431d59a02b21a4e951acc10505a8dc407c501ee",
+          "policy": "code-leading-indent-projection-v1",
+          "region_id": "block-002",
+          "semantic_sha256": "928c9d2fca649a8f429924f7d4b87ba4e73e335ad61888e2d22e4c858a65ebf9"
+        },
+        {
+          "kind": "code",
+          "page_number": 96,
+          "physical_sha256": "83f42dd836b40569621f88787d1e82b515a1870fe2dfaa1805aabbdfe300ba15",
+          "policy": "code-leading-indent-projection-v1",
+          "region_id": "block-005",
+          "semantic_sha256": "126a5685c8d8695cc5d084a62689e8dbccf9b7ee04a2b71110f0897e67618471"
+        },
+        {
+          "kind": "code",
+          "page_number": 96,
+          "physical_sha256": "97660383bc000caa85f4385eaa0644972c30add72df2e0450a2b79054cae2c43",
+          "policy": "code-leading-indent-projection-v1",
+          "region_id": "block-006",
+          "semantic_sha256": "8890b9c9bcd4dbc5a6bbeceabdeed9118c0223765129e3b2f032c20fb4d5a2e0"
+        },
+        {
+          "kind": "code",
+          "page_number": 96,
+          "physical_sha256": "c049e9fc0f4a2d871081a60a72ee0a367919421356587d6e589163a8cb8ee66d",
+          "policy": "code-leading-indent-projection-v1",
+          "region_id": "block-007",
+          "semantic_sha256": "3e8d3641eb0b48b101df0eff111b2617510695e75f6d03088ab9072233c866c3"
+        },
+        {
+          "kind": "code",
+          "page_number": 96,
+          "physical_sha256": "97660383bc000caa85f4385eaa0644972c30add72df2e0450a2b79054cae2c43",
+          "policy": "code-leading-indent-projection-v1",
+          "region_id": "block-010",
+          "semantic_sha256": "ab0e53482859b66f9b132e12b6863e9e13400a62a97feb61f40fa3007a8f79f6"
+        },
+        {
+          "kind": "code",
+          "page_number": 96,
+          "physical_sha256": "af325696a1c29ae6741cff70703f895550d72533853567b25f4af4599bf0f67e",
+          "policy": "code-leading-indent-projection-v1",
+          "region_id": "block-011",
+          "semantic_sha256": "c90c137414c19c79278cb56f44b3da1f99aa2987a8da579e1a40356cd2f59bfd"
+        },
+        {
+          "kind": "code",
+          "page_number": 96,
+          "physical_sha256": "f1327434910d8d3fe1377a2d53a0290457dc256674f5b001d119a8f0566dbcb4",
+          "policy": "code-leading-indent-projection-v1",
+          "region_id": "block-012",
+          "semantic_sha256": "d27d67cbff9382c88c17e5fe6d59df9e5681cc1042fa6baa9f2a0e846b54b230"
+        },
+        {
+          "kind": "body",
+          "page_number": 104,
+          "physical_sha256": "7e381915aaebae039f7a1675962110641fc2cd617a412c46258f0c66b6813400",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-004",
+          "semantic_sha256": "ad48239d16ac7c1bd4384dd69c2a71906e263f582cbc020f9bb0e545c55a2b2f"
+        },
+        {
+          "kind": "body",
+          "page_number": 106,
+          "physical_sha256": "b1de7215e136438fa8509190fdd729ce2625a065470660befa41c565e6353834",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-017",
+          "semantic_sha256": "d588696a02b329d80f8f21a866f9e5fc72f15aa7f5fb8764c9b82ed67d045fc7"
+        },
+        {
+          "kind": "body",
+          "page_number": 107,
+          "physical_sha256": "23e864d0c4d01e8bd57079e034e21380361e9fcc45207f02137ec91a0a154a30",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-001",
+          "semantic_sha256": "cd1311a889a4f99480033421c7e1945cf1232f2d6d72272ab44a15db2c584823"
+        },
+        {
+          "kind": "body",
+          "page_number": 108,
+          "physical_sha256": "a5a6dc2440288a4591eb207776bd5f9fdbfcba225e25e66e5c377a3baae05278",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-001",
+          "semantic_sha256": "10b1b40e15afa96942849569f12c335868583d2b741dcf2224795aa8ec868759"
+        },
+        {
+          "kind": "body",
+          "page_number": 108,
+          "physical_sha256": "584e7e7e0ff4601a205595aca637dd6dbbf3a1b3f092519101efd84d39d3b127",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-004",
+          "semantic_sha256": "3adc49fc40fc856ada48fd7d4f0737e6cb8f3010883502677bed81ac5965a5b9"
+        },
+        {
+          "kind": "body",
+          "page_number": 108,
+          "physical_sha256": "6b5d0b08cc08abe3a0f2cc2d82a9c7b65c709061848ecc69652d9ca3a947319c",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-005",
+          "semantic_sha256": "57daae210be91bf8d5a7a7c74918fed2674442cba7d277f79a35fc74c5b7ea9f"
+        },
+        {
+          "kind": "body",
+          "page_number": 108,
+          "physical_sha256": "5be742a68187f78df0565fa5ae97019008572723cadb857d8a34dd01cee47ed3",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-006",
+          "semantic_sha256": "22bb08e60c426781880341a2362376dfd66936938eb7664d8b550eb35de39571"
+        },
+        {
+          "kind": "body",
+          "page_number": 108,
+          "physical_sha256": "aafbf4fb658568648f8e67127b522cb6bdd489730660d95e13d1826afc7f6852",
+          "policy": "prose-layout-whitespace-projection-v1",
+          "region_id": "block-007",
+          "semantic_sha256": "17e9a8cabf2d7d4af35da4cce1cdc5d7cc93f60f5352639b29f89046c1cb5f1e"
+        }
+      ],
+      "sha256": "0c866d2673001eaa81e8f355195f07f02d978bd456e788fbedf4838e171b0103"
+    }
+  },
+  "limitations": [
+    "Source-derived semantic text and r33 physical projections are not independent human truth and cannot support engine selection.",
+    "Spatial association is overlap-based against reviewed replica boxes, not independently adjudicated layout truth.",
+    "No independent double transcription, confidence calibration, table-cell structure score, or selection threshold is present."
+  ],
+  "plan_requested_pages": [
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110
+  ],
+  "recovered_truth": {
+    "authoritative_pages": 20,
+    "provisional_evidence_gaps": [],
+    "provisional_pages": 0
+  }
+}
